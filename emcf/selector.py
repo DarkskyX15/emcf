@@ -1,6 +1,6 @@
 
 from .core import MCF
-from .exceptions import MCFVersionError, MCFValueError
+from ._exceptions import MCFVersionError, MCFValueError
 from typing import TextIO
 
 class Selector:

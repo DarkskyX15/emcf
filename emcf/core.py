@@ -1,27 +1,19 @@
 
 from .database import *
+from ._utils import getMultiPaths
 from typing import TypeAlias, Any, Literal, TextIO, Callable, Protocol
 import os, random
 
 EMCF = "a0.1.0"
 
 ConfigMap: TypeAlias = dict[Literal[
-    "namespace", "version", "dist", "prefix"
+    "namespace", "version", "dist", "prefix", "gc"
 ], Any]
 
 class MCFWriter(Protocol):
     def __call__(self, io: TextIO, *args: Any): ...
 
 MCFVersion: TypeAlias = Literal[1204, 1211]
-
-def getMultiPaths(folder_path: str) -> tuple[list[str], list[str]]:
-    file_path_list = list()
-    folder_list = list()
-    for filepath, _, filenames in os.walk(folder_path):
-        for filename in filenames:
-            file_path_list.append(os.path.join(filepath, filename))
-        folder_list.append(filepath)
-    return (file_path_list, folder_list)
 
 class FoolID:
     _present: list[int]
@@ -68,6 +60,7 @@ class MCFunction:
     sb_sys: str
     storage: str
     database: MCFDataBase
+    do_gc: bool
 
     CALC_RES = "reg1"
     CALC_CONST = "reg2"
@@ -85,6 +78,7 @@ class MCFunction:
         self._io_history = []
         self._io_ptr = None
         self._component_reg = dict()
+        self.do_gc = True
 
     def useConfig(self, cfg_map: ConfigMap) -> None:
         # config query
@@ -92,6 +86,7 @@ class MCFunction:
         self._mcf_version = cfg_map.get("version", self._mcf_version)
         self._dist = cfg_map.get("dist", self._dist)
         self._prefix = cfg_map.get("prefix", self._prefix)
+        self.do_gc = cfg_map.get("gc", self.do_gc)
         self._identity_map.clear()
         self._component_reg.clear()
 
@@ -142,6 +137,20 @@ scoreboard players set {MCF.REG3} {self.sb_sys} 0
             path = f"{self.wk_root}\\{name}.mcfunction"
             sig = f"{self._namespace}:{name}"
         return path, sig
+
+    def exportComponent(self, cp_id: str) -> None:
+        cps = self.database.loadComponent(cp_id)
+        for cp in cps:
+            path, key = cp
+            w_path, sig = self.makeFunction()
+            with open(path, 'r', encoding='utf-8') as rd:
+                content = rd.read()
+            with open(w_path, 'w', encoding='utf-8') as wt :
+                wt.write(content)
+            self._component_reg[key] = sig
+
+    def builtinSign(self, func_id: str) -> str:
+        return self._component_reg.get(func_id)
 
     def registerValue(self) -> str:
         fid = self._fool_id_generator.get()

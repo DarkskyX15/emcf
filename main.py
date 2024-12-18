@@ -9,20 +9,16 @@ if __name__ == '__main__':
 
     MCF.useConfig({
         "namespace": "test",
-        "version": 1204
+        "version": 1204,
+        "gc": True
     })
 
     val1 = Integer(10)
     val2 = Integer(20)
     val3 = Integer(30)
 
-    with mcf_if:
-        pass
-    with mcf_elif:
-        pass
-    with mcf_else:
-        pass
-
-    val4 = Integer(val1 * val2 * val3)
+    val4 = abs((val1 + val3) // val2 * 114 % val1)
     say(val4, Selector("@e"))
 
+    c1 = (val1 < 10).Or(val2 > 19).And(val1 != val2).And(val1 == 10)
+    say(c1, Selector("@s"))
