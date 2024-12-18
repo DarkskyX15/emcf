@@ -27,7 +27,7 @@ ConditionConvertible: TypeAlias = Condition | bool
 class Condition(MCFVariable):
     def __init__(self, init_val: ConditionConvertible | None = False):
         super().__init__()
-        self._mcf_id = MCF.registerValue()
+        self._mcf_id = MCF.getFID()
         if init_val is None: return 
         self.assign(init_val)
     
@@ -193,7 +193,6 @@ scoreboard players operation {this} {this_sb} %= {MCF.CALC_CONST} {MCF.sb_sys}
                 self._write_rm,
                 self._mcf_id, MCF.sb_general
             )
-        MCF.deleteValue(self._mcf_id)
     
     @staticmethod
     def _write_rm(io: TextIO, this: str, this_sb: str) -> None:
@@ -209,7 +208,7 @@ class Integer(MCFVariable):
 
     def __init__(self, init_val: IntegerConvertible | None = 0):
         super().__init__()
-        self._mcf_id = MCF.registerValue()
+        self._mcf_id = MCF.getFID()
         if init_val is None: return
         self.assign(init_val)
 
@@ -221,8 +220,6 @@ class Integer(MCFVariable):
                 str(value)
             )
         elif isinstance(value, Integer):
-            if not MCF.exist(value._mcf_id):
-                raise MCFNameError(value._mcf_id)
             MCF.write(
                 self._write_operation,
                 self._mcf_id, MCF.sb_general,
@@ -474,7 +471,6 @@ class Integer(MCFVariable):
                 self._write_rm,
                 self._mcf_id, MCF.sb_general
             )
-        MCF.deleteValue(self._mcf_id)
 
     @staticmethod
     def _write_const_sb(io: TextIO, this, sb, val) -> None:
