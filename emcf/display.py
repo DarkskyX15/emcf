@@ -9,7 +9,6 @@ def say(obj: Any, target: Selector | None = None) -> None:
     def _write_say_macro(io: TextIO, select: str, sig: str) -> None:
         io.write(
 f"""data modify storage {MCF.storage} call.m0 set value "{select}"
-data modify storage {MCF.storage} call.m1 set from storage {MCF.storage} move.m1
 function {sig} with storage {MCF.storage} call
 """
         )
@@ -27,7 +26,7 @@ f"""execute as {select} run say {text}
 
     with target:
         if isinstance(obj, MCFVariable):
-            obj.move("m1")
+            obj.move("call.m1")
             MCF.write(
                 _write_say_macro,
                 target.select(), MCF.builtinSign('display.say.main')

@@ -2,18 +2,33 @@
 from .core import MCF
 from ._exceptions import *
 from abc import abstractmethod
-from typing import TypeAlias, NewType, Any, Union, TextIO
+from typing import TypeAlias, NewType, Any, Union, TextIO, Self
 
 class MCFVariable:
     _mcf_id: str
+    _do_gc: bool
     def __init__(self):
-        pass
+        self._do_gc = MCF.do_gc
+    
+    @abstractmethod
+    def assign(self, value: Any) -> Self:
+        return NotImplemented
+
     @abstractmethod
     def move(self, dist: str) -> None:
-        pass
+        return NotImplemented
+    
+    @abstractmethod
+    def collect(self, src: str) -> None:
+        return NotImplemented
 
-def MCFFunction() -> None:
-    pass
+    @abstractmethod
+    def macro_construct(slot: str, mcf_id: str) -> Self:
+        return NotImplemented
+
+    @abstractmethod
+    def duplicate(*args) -> Self:
+        return NotImplemented
 
 Register = NewType("Register", MCFVariable)
 class Register(MCFVariable):
@@ -25,9 +40,13 @@ class Register(MCFVariable):
 Condition = NewType("Condition", MCFVariable)
 ConditionConvertible: TypeAlias = Condition | bool
 class Condition(MCFVariable):
-    def __init__(self, init_val: ConditionConvertible | None = False):
+    def __init__(
+        self,
+        init_val: ConditionConvertible | None = False,
+        void: bool = False
+    ):
         super().__init__()
-        self._mcf_id = MCF.getFID()
+        if not void: self._mcf_id = MCF.getFID()
         if init_val is None: return 
         self.assign(init_val)
     
@@ -49,6 +68,27 @@ class Condition(MCFVariable):
                 "Can not use {} as value for Condition.",
                 value
             )
+
+    @staticmethod
+    def macro_construct(slot: str, mcf_id: str) -> Condition:
+        temp = Condition(None, True)
+        temp._mcf_id = mcf_id
+        MCF.write(
+            Condition._write_m_construct,
+            temp._mcf_id, slot
+        )
+        return temp
+
+    @staticmethod
+    def _write_m_construct(io: TextIO, this: str, slot: str) -> None:
+        io.write(
+f"""$scoreboard players operation {this} {MCF.sb_general} = $({slot}) {MCF.sb_general}
+"""
+        )
+    
+    @staticmethod
+    def duplicate(init_val: ConditionConvertible, void: bool = False) -> Condition:
+        return Condition(init_val, void)
 
     @staticmethod
     def _write_set(io: TextIO, this: str, this_sb: str, value: str) -> None:
@@ -77,7 +117,17 @@ f"""scoreboard players operation {this} {this_sb} = {that} {that_sb}
     @staticmethod
     def _write_move(io: TextIO, this: str, dist: str) -> None:
         io.write(
-f"""execute store result storage {MCF.storage} move.{dist} int 1.0 run scoreboard players get {this} {MCF.sb_general}
+f"""execute store result storage {MCF.storage} {dist} int 1.0 run scoreboard players get {this} {MCF.sb_general}
+"""            
+        )
+
+    def collect(self, src: str) -> None:
+        MCF.write(self._write_collect, self._mcf_id, src)
+
+    @staticmethod
+    def _write_collect(io: TextIO, this: str, src: str) -> None:
+        io.write(
+f"""execute store result score {this} {MCF.sb_general} run data get storage {MCF.storage} {src}
 """            
         )
 
@@ -188,7 +238,7 @@ scoreboard players operation {this} {this_sb} %= {MCF.CALC_CONST} {MCF.sb_sys}
         )
 
     def __del__(self) -> None:
-        if MCF.do_gc:
+        if self._do_gc:
             MCF.write(
                 self._write_rm,
                 self._mcf_id, MCF.sb_general
@@ -206,9 +256,13 @@ Integer = NewType("Integer", MCFVariable)
 IntegerConvertible: TypeAlias = Integer | int
 class Integer(MCFVariable):
 
-    def __init__(self, init_val: IntegerConvertible | None = 0):
+    def __init__(
+        self,
+        init_val: IntegerConvertible | None = 0,
+        void: bool = False
+    ):
         super().__init__()
-        self._mcf_id = MCF.getFID()
+        if not void: self._mcf_id = MCF.getFID()
         if init_val is None: return
         self.assign(init_val)
 
@@ -237,6 +291,30 @@ class Integer(MCFVariable):
             self._write_move,
             self._mcf_id, dist
         )
+
+    def collect(self, src: str) -> None:
+        MCF.write(self._write_collect, self._mcf_id, src)
+
+    @staticmethod
+    def macro_construct(slot: str, mcf_id: str) -> Integer:
+        temp = Integer(None, True)
+        temp._mcf_id = mcf_id
+        MCF.write(
+            Integer._write_m_construct,
+            temp._mcf_id, slot
+        )
+        return temp
+
+    @staticmethod
+    def _write_m_construct(io: TextIO, this: str, slot: str) -> None:
+        io.write(
+f"""$scoreboard players operation {this} {MCF.sb_general} = $({slot}) {MCF.sb_general}
+"""
+        )
+
+    @staticmethod
+    def duplicate(init_val: IntegerConvertible, void: bool = False) -> Integer:
+        return Integer(init_val, void)
 
     def __pos__(self) -> Integer:
         return Integer(self)
@@ -466,7 +544,7 @@ class Integer(MCFVariable):
             return NotImplemented
 
     def __del__(self):
-        if MCF.do_gc:
+        if self._do_gc:
             MCF.write(
                 self._write_rm,
                 self._mcf_id, MCF.sb_general
@@ -526,10 +604,17 @@ f"""scoreboard players {tp} {this} {this_sb} {val}
     @staticmethod
     def _write_move(io: TextIO, this: str, dist: str) -> None:
         io.write(
-f"""execute store result storage {MCF.storage} move.{dist} int 1.0 run scoreboard players get {this} {MCF.sb_general}
+f"""execute store result storage {MCF.storage} {dist} int 1.0 run scoreboard players get {this} {MCF.sb_general}
 """            
         )
 
+    @staticmethod
+    def _write_collect(io: TextIO, this: str, src: str) -> None:
+        io.write(
+f"""execute store result score {this} {MCF.sb_general} run data get storage {MCF.storage} {src}
+"""            
+        )
+    
     @staticmethod
     def _write_neg(
         io: TextIO,

@@ -54,6 +54,8 @@ class MCFunction:
     _io_ptr: str
     _io_history: list[str]
     _component_reg: dict[str, str]
+    _context: list
+    _context_stack: list[list]
 
     sb_general: str
     sb_sys: str
@@ -63,7 +65,7 @@ class MCFunction:
 
     CALC_RES = "reg1"
     CALC_CONST = "reg2"
-    REG3 = "reg3"
+    COND_LAST = "reg3"
 
     def __init__(self):
         self._operation_stack = []
@@ -76,6 +78,8 @@ class MCFunction:
         self._io_history = []
         self._io_ptr = None
         self._component_reg = dict()
+        self._context = []
+        self._context_stack = []
         self.do_gc = True
 
     def useConfig(self, cfg_map: ConfigMap) -> None:
@@ -86,6 +90,8 @@ class MCFunction:
         self._prefix = cfg_map.get("prefix", self._prefix)
         self.do_gc = cfg_map.get("gc", self.do_gc)
         self._component_reg.clear()
+        self._context.clear()
+        self._context_stack.clear()
 
         # name defines
         self.sb_general = f"emcf_{self._namespace}"
@@ -109,15 +115,15 @@ class MCFunction:
         with open(self._io_ptr, 'a', encoding='utf-8') as file:
             file.write(f"# {self._prefix} \n")
             file.write(
-
 f"""scoreboard objectives add {self.sb_general} dummy
 scoreboard objectives add {self.sb_sys} dummy
 data modify storage {self.storage} version set value "{EMCF}"
 data modify storage {self.storage} call set value """ + r"{}" + f"""
-data modify storage {self.storage} move set value """ + r"{}" + f"""
+data modify storage {self.storage} frame set value """ + r"{}" + f"""
+data modify storage {self.storage} stack set value []
 scoreboard players set {MCF.CALC_RES} {self.sb_sys} 0
 scoreboard players set {MCF.CALC_CONST} {self.sb_sys} 0
-scoreboard players set {MCF.REG3} {self.sb_sys} 0
+scoreboard players set {MCF.COND_LAST} {self.sb_sys} 0
 """
             )
         self._io_history.append(f"{self.wk_root}\\main.mcfunction")

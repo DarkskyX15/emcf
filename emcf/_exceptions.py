@@ -22,14 +22,6 @@ class MCFTypeError(MCFException):
     def __str__(self):
         return self.message
 
-class MCFNameError(MCFException):
-    message: str
-    def __init__(self, val: str):
-        super().__init__(val)
-        self.message = f"MCF id not found: {val}"
-    def __str__(self):
-        return self.message
-
 class MCFValueError(MCFException):
     message: str
     def __init__(self, msg: str):
