@@ -1,7 +1,7 @@
 
 from .core import MCF
 from ._exceptions import MCFVersionError, MCFValueError
-from typing import TextIO
+from typing import TextIO, Self
 
 class Selector:
     _target: str
@@ -18,12 +18,13 @@ class Selector:
             raise MCFVersionError(f"Selector {target} not supported")
         self._built += target
 
-    def __enter__(self) -> str:
+    def __enter__(self) -> Self:
         self._last_tag = MCF.getFID()
         MCF.write(
             self._write_enter,
             self._built, self._last_tag
         )
+        return self
 
     def __exit__(self, exc_type, exc_value, exc_tb) -> None:
         MCF.write(

@@ -1,34 +1,33 @@
 
 from .core import MCF
 from ._exceptions import MCFTypeError
-from .types import MCFVariable
-from typing import Callable, TypeVar, TypeVarTuple, Generic, TextIO
-from functools import update_wrapper
+from .types import MCFVariable, FakeNone
+from typing import Callable, TypeVar, TypeVarTuple, Generic, TextIO, Type
+from functools import wraps
 
 Ret = TypeVar('Ret')
 Args = TypeVarTuple('Args')
-class MCFunction(Generic[*Args, Ret]):
+class MCFunction(Generic[Ret]):
     _entry_path: str
     _entry_sig: str
     _body_path: str
     _body_sig: str
     _exported: bool
     _ret_addr: str | None
+    _ret_type: Type[Ret]
     _input_addr: list[str]
     _context: list
-    _function: Callable[[*Args], Ret]
 
-    def __init__(self, func: Callable[[*Args], Ret]):
+    def __init__(self, ret_type: Type[Ret] = FakeNone):
         self._entry_path, self._entry_sig = MCF.makeFunction()
         self._body_path, self._body_sig = MCF.makeFunction()
+        self._ret_addr = MCF.getFID()
         self._exported = False
-        self._function = func
-        self._ret_addr = None
+        self._ret_type = ret_type
         self._input_addr = []
         self._context = []
-        update_wrapper(self, func)
 
-    def _collect_params(self, args: tuple[*Args]) -> tuple[*Args]:
+    def _collect_params(self, args: tuple[object]) -> tuple[MCFVariable]:
         collected = []
         index = 0
         for arg in args:
@@ -44,7 +43,7 @@ class MCFunction(Generic[*Args, Ret]):
                 )
         return tuple(collected)
 
-    def _export_params(self, args: tuple[*Args]) -> None:
+    def _export_params(self, args: tuple[object]) -> None:
         index = 0
         for arg in args:
             if isinstance(arg, MCFVariable):
@@ -90,7 +89,8 @@ f"""function {sig} with storage {MCF.storage} {params}
     @staticmethod
     def _write_push_frame(io: TextIO) -> None:
         io.write(
-f"""execute store result storage {MCF.storage} frame.cond int 1.0 run scoreboard players get {MCF.COND_LAST} {MCF.sb_sys}
+f"""data modify storage {MCF.storage} frame.cond_stack set from storage {MCF.storage} cond_stack
+execute store result storage {MCF.storage} frame.terminate byte 1.0 run scoreboard players get {MCF.TERMINATE} {MCF.sb_sys}
 data modify storage {MCF.storage} stack append from storage {MCF.storage} frame
 data modify storage {MCF.storage} frame set value """ + "{}\n"
         )
@@ -102,7 +102,8 @@ data modify storage {MCF.storage} frame set value """ + "{}\n"
     @staticmethod
     def _write_reset_frame(io: TextIO) -> None:
         io.write(
-f"""scoreboard players set {MCF.COND_LAST} {MCF.sb_sys} 0
+f"""data modify storage {MCF.storage} cond_stack set value []
+scoreboard players set {MCF.TERMINATE} {MCF.sb_sys} 0
 """
         )
 
@@ -119,54 +120,91 @@ f"""scoreboard players set {MCF.COND_LAST} {MCF.sb_sys} 0
         io.write(
 f"""data modify storage {MCF.storage} frame set from storage {MCF.storage} stack[-1]
 data remove storage {MCF.storage} stack[-1]
-execute store result score {MCF.COND_LAST} {MCF.sb_sys} run data get storage {MCF.storage} frame.cond
+data modify storage {MCF.storage} cond_stack set from storage {MCF.storage} frame.cond_stack
+execute store result score {MCF.TERMINATE} {MCF.sb_sys} run data get storage {MCF.storage} frame.terminate 1.0
 """
         )
 
-    def __call__(self, *args: *Args) -> Ret:
-        
-        if not self._exported:
-            for _ in range(len(args)):
-                self._input_addr.append(MCF.getFID())
+    def __call__(self, func: Callable[[*Args], None]) -> Callable[[*Args], Ret]:
+        @wraps(func)
+        def wrapper(*args: *Args) -> Ret:
+            if not self._exported:
+                for _ in range(len(args)):
+                    self._input_addr.append(MCF.getFID())
 
-        self._push_stack()
+            self._push_stack()
 
-        self._export_params(args)
-        if not self._exported:
-            self._exported = True
-            MCF.forward(self._entry_path)
-            collected = self._collect_params(args)
-            for var in collected:
-                new = var.duplicate(None, True)
-                new._mcf_id = var._mcf_id
-                new._do_gc = False
-                self._context.append(new)
-            self._new_stack()
+            self._export_params(args)
+            if not self._exported:
+                self._exported = True
+                MCF.forward(self._entry_path)
+                collected = self._collect_params(args)
+                for var in collected:
+                    new = var.duplicate(None, True)
+                    new._mcf_id = var._mcf_id
+                    new._do_gc = False
+                    self._context.append(new)
+                self._new_stack()
+                MCF.write(
+                    self._write_call,
+                    self._body_sig, None
+                )
+
+                MCF.forward(self._body_path)
+                func(*collected)
+                MCF.rewind()
+                
+                for var in collected:
+                    var._do_gc = False
+                del collected
+                MCF.rewind()
+            else:
+                self._new_stack()
+
             MCF.write(
                 self._write_call,
-                self._body_sig, None
+                self._entry_sig, "call"
             )
-            MCF.forward(self._body_path)
-            result = self._function(*collected)
-            if result is None:
-                pass
-            elif isinstance(result, MCFVariable):
-                self._ret_addr = result._mcf_id
+
+            ret_val = self._ret_type(None, False)
+            if isinstance(ret_val, FakeNone):
+                ret_val = None
+                self._pop_stack()
             else:
-                raise MCFTypeError(
-                    "'{}' can not be returned by a MCFunction.",
-                    result
-                )
-            MCF.rewind()
-            for var in collected: del var
-            del collected
-            MCF.rewind()
-        else:
-            self._new_stack()
+                ret_val.collect("ret_val")
+                self._pop_stack()
+                shadow = ret_val.duplicate(None, True)
+                shadow._mcf_id = ret_val._mcf_id
+                shadow._do_gc = False
+                MCF._context.append(shadow)
+            
+            return ret_val
+        
+        return wrapper
 
-        MCF.write(
-            self._write_call,
-            self._entry_sig, "call"
+def Return(ret_value: MCFVariable = FakeNone()) -> None:
+    def _write_return(io: TextIO, empty: bool):
+        io.write(
+f"""scoreboard players set {MCF.TERMINATE} {MCF.sb_sys} 1
+"""
         )
-
-        self._pop_stack()
+        if empty:
+            io.write(
+f"""data modify storage {MCF.storage} ret_val set value ""
+"""
+            )
+    def _write_end(io: TextIO):
+        io.write("return 1\n")
+    if isinstance(ret_value, FakeNone):
+        MCF.write(_write_return, True)
+    elif isinstance(ret_value, MCFVariable):
+        MCF.write(_write_return, False)
+        ret_value.move("ret_val")
+    else:
+        raise MCFTypeError(
+            "Type {} can not be returned by a MCFunction.",
+            type(ret_value)
+        )
+    for shadow in MCF._context:
+        shadow.rm()
+    MCF.write(_write_end)

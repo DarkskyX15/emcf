@@ -62,10 +62,12 @@ class MCFunction:
     storage: str
     database: MCFDataBase
     do_gc: bool
+    stop_gc: bool
 
-    CALC_RES = "reg1"
+    GENERAL = "reg1"
     CALC_CONST = "reg2"
     COND_LAST = "reg3"
+    TERMINATE = "reg4"
 
     def __init__(self):
         self._operation_stack = []
@@ -81,6 +83,7 @@ class MCFunction:
         self._context = []
         self._context_stack = []
         self.do_gc = True
+        self.stop_gc = False
 
     def useConfig(self, cfg_map: ConfigMap) -> None:
         # config query
@@ -121,9 +124,13 @@ data modify storage {self.storage} version set value "{EMCF}"
 data modify storage {self.storage} call set value """ + r"{}" + f"""
 data modify storage {self.storage} frame set value """ + r"{}" + f"""
 data modify storage {self.storage} stack set value []
-scoreboard players set {MCF.CALC_RES} {self.sb_sys} 0
+data modify storage {self.storage} ret_val set value ""
+data modify storage {self.storage} cond_stack set value []
+data modify storage {self.storage} register set value ""
+scoreboard players set {MCF.GENERAL} {self.sb_sys} 0
 scoreboard players set {MCF.CALC_CONST} {self.sb_sys} 0
 scoreboard players set {MCF.COND_LAST} {self.sb_sys} 0
+scoreboard players set {MCF.TERMINATE} {self.sb_sys} 0
 """
             )
         self._io_history.append(f"{self.wk_root}\\main.mcfunction")

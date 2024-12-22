@@ -30,12 +30,16 @@ class MCFVariable:
     def duplicate(*args) -> Self:
         return NotImplemented
 
-Register = NewType("Register", MCFVariable)
-class Register(MCFVariable):
-    _address: str
-    def __init__(self, addr: str):
+    @abstractmethod
+    def rm(self) -> None:
+        return NotImplemented
+
+
+FakeNone = NewType("FakeNone", MCFVariable)
+class FakeNone(MCFVariable):
+    def __init__(self, init_val = None, void = False):
         super().__init__()
-        self._address = addr
+
 
 Condition = NewType("Condition", MCFVariable)
 ConditionConvertible: TypeAlias = Condition | bool
@@ -46,7 +50,12 @@ class Condition(MCFVariable):
         void: bool = False
     ):
         super().__init__()
-        if not void: self._mcf_id = MCF.getFID()
+        if not void:
+            self._mcf_id = MCF.getFID()
+            shadow = Condition(None, True)
+            shadow._mcf_id = self._mcf_id
+            shadow._do_gc = False
+            MCF._context.append(shadow)
         if init_val is None: return 
         self.assign(init_val)
     
@@ -239,10 +248,22 @@ scoreboard players operation {this} {this_sb} %= {MCF.CALC_CONST} {MCF.sb_sys}
 
     def __del__(self) -> None:
         if self._do_gc:
-            MCF.write(
-                self._write_rm,
-                self._mcf_id, MCF.sb_general
-            )
+            index = 0
+            for obj in MCF._context:
+                if obj._mcf_id == self._mcf_id:
+                    MCF._context.pop(index)
+                index += 1
+            if not MCF.stop_gc:
+                MCF.write(
+                    self._write_rm,
+                    self._mcf_id, MCF.sb_general
+                )
+    
+    def rm(self) -> None:
+        MCF.write(
+            self._write_rm,
+            self._mcf_id, MCF.sb_general
+        )
     
     @staticmethod
     def _write_rm(io: TextIO, this: str, this_sb: str) -> None:
@@ -250,7 +271,7 @@ scoreboard players operation {this} {this_sb} %= {MCF.CALC_CONST} {MCF.sb_sys}
 f"""scoreboard players reset {this} {this_sb}
 """
         )
-        
+ 
 
 Integer = NewType("Integer", MCFVariable)
 IntegerConvertible: TypeAlias = Integer | int
@@ -262,7 +283,12 @@ class Integer(MCFVariable):
         void: bool = False
     ):
         super().__init__()
-        if not void: self._mcf_id = MCF.getFID()
+        if not void:
+            self._mcf_id = MCF.getFID()
+            shadow = Integer(None, True)
+            shadow._mcf_id = self._mcf_id
+            shadow._do_gc = False
+            MCF._context.append(shadow)
         if init_val is None: return
         self.assign(init_val)
 
@@ -285,6 +311,12 @@ class Integer(MCFVariable):
                 value
             )
         return self
+
+    def rm(self) -> None:
+        MCF.write(
+            self._write_rm,
+            self._mcf_id, MCF.sb_general
+        )
 
     def move(self, dist: str) -> None:
         MCF.write(
@@ -545,10 +577,16 @@ f"""$scoreboard players operation {this} {MCF.sb_general} = $({slot}) {MCF.sb_ge
 
     def __del__(self):
         if self._do_gc:
-            MCF.write(
-                self._write_rm,
-                self._mcf_id, MCF.sb_general
-            )
+            index = 0
+            for obj in MCF._context:
+                if obj._mcf_id == self._mcf_id:
+                    MCF._context.pop(index)
+                index += 1
+            if not MCF.stop_gc:
+                MCF.write(
+                    self._write_rm,
+                    self._mcf_id, MCF.sb_general
+                )
 
     @staticmethod
     def _write_const_sb(io: TextIO, this, sb, val) -> None:
