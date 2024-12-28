@@ -1,76 +1,117 @@
+"""
+MCF所有基础变量的封装
+"""
 
-from .core import MCF
+from .core import MCF, GCSign
 from ._exceptions import *
-from abc import abstractmethod
-from typing import TypeAlias, NewType, Any, Union, TextIO, Self
+from ._writers import *
+from typing import TypeAlias, NewType, Any, Union, TextIO, Self, Literal
+
 
 class MCFVariable:
+    """MCF变量的基类
+
+    所有的内置MCF变量都需要直接继承自`MCFVariable`
+    """
     _mcf_id: str
-    _do_gc: bool
-    def __init__(self):
-        self._do_gc = MCF.do_gc
-    
-    @abstractmethod
-    def assign(self, value: Any) -> Self:
+    _gc_sign: GCSign
+
+    def __init__(self, init_val: Any, void: bool):
+        """初始化MCF变量
+
+        - `init_val`: 初始值
+        - `void`: 是否为空值
+
+        当初始值设置为`None`时，将不会做初始的赋值操作。因此，创建一个初始值为`None`
+        的MCF变量将不会体现在生成的函数内，但是该变量会被记录至当前的上下文，
+        且会生成Fool ID。
+
+        当`void`参数为`True`时，创建的该MCF变量成为“空值”。空值将不会做初始化，不
+        创建Fool ID，且不会被记录至当前的上下文。目前空值仅在上下文列表中使用，列表
+        中空值的`_gc_sign`属性被设为`shadow`，防止重复析构的同时保留类型的操作。
+
+        子类的初始化方法中不可省略`init_val`与`void`参数。
+        """
+        self._gc_sign = 'norm' if MCF.do_gc else 'none'
+        if not void:
+            self._mcf_id = MCF.getFID()
+            MCF.addContext(self)
+        if init_val is not None:
+            self.assign(init_val)
+
+    def assign(self, value: Any):
+        """将`value`赋值至自身"""
         return NotImplemented
 
-    @abstractmethod
-    def move(self, dist: str) -> None:
-        return NotImplemented
-    
-    @abstractmethod
-    def collect(self, src: str) -> None:
+    def move(self, dist: str):
+        """将变量值移动至storage的`dist`位置"""
         return NotImplemented
 
-    @abstractmethod
-    def macro_construct(slot: str, mcf_id: str) -> Self:
+    def collect(self, src: str):
+        """从storage的`src`位置收集数据"""
         return NotImplemented
 
-    @abstractmethod
-    def duplicate(*args) -> Self:
+    @staticmethod
+    def macro_construct(slot: str, mcf_id: str):
+        """从`slot`指定的宏位置创建Fool ID为`mcf_id`的实例"""
         return NotImplemented
 
-    @abstractmethod
-    def rm(self) -> None:
+    def duplicate(
+        self,
+        init_val: Any = None,
+        void: bool = False
+    ):
+        """产生与自身类型相同的对象"""
+        return NotImplemented
+
+    def rm(self):
+        """写清除指令，但不将自身移出上下文"""
         return NotImplemented
 
 
-FakeNone = NewType("FakeNone", MCFVariable)
 class FakeNone(MCFVariable):
-    def __init__(self, init_val = None, void = False):
-        super().__init__()
+    """虚假的None类型，用于表示MCFunction中的无返回值。
+
+    该类仅初始化为空值。
+    """
+    def __init__(
+        self, 
+        init_val: Any = None, 
+        void: bool = True
+    ):
+        super().__init__(None, True)
+    
+    def duplicate(
+        self,
+        init_val: Any = None,
+        void: bool = True
+    ) -> Self:
+        return FakeNone(None, True)
 
 
 Condition = NewType("Condition", MCFVariable)
 ConditionConvertible: TypeAlias = Condition | bool
 class Condition(MCFVariable):
+    """布尔值类型"""
     def __init__(
         self,
         init_val: ConditionConvertible | None = False,
         void: bool = False
     ):
-        super().__init__()
-        if not void:
-            self._mcf_id = MCF.getFID()
-            shadow = Condition(None, True)
-            shadow._mcf_id = self._mcf_id
-            shadow._do_gc = False
-            MCF._context.append(shadow)
-        if init_val is None: return 
-        self.assign(init_val)
-    
+        super().__init__(init_val, void)
+
     def assign(self, value: ConditionConvertible) -> Condition:
+        """向布尔值赋值，可使用`Condition`或`bool`类型。"""
         if isinstance(value, bool):
-            MCF.write(
-                self._write_set,
-                self._mcf_id, MCF.sb_general,
+            ScoreBoard.players_set(
+                self._mcf_id,
+                MCF.sb_general,
                 '1' if value else '0'
             )
         elif isinstance(value, Condition):
-            MCF.write(
-                self._write_assign,
+            ScoreBoard.players_operation(
                 self._mcf_id, MCF.sb_general,
-                value._mcf_id, MCF.sb_general
+                '=', value._mcf_id, MCF.sb_general
             )
         else:
             raise MCFTypeError(
@@ -82,90 +123,49 @@ class Condition(MCFVariable):
     def macro_construct(slot: str, mcf_id: str) -> Condition:
         temp = Condition(None, True)
         temp._mcf_id = mcf_id
-        MCF.write(
-            Condition._write_m_construct,
-            temp._mcf_id, slot
+        ScoreBoard.players_operation(
+            temp._mcf_id, MCF.sb_general, '=',
+            f'$({slot})', MCF.sb_general,
+            macro=True
         )
         return temp
 
     @staticmethod
-    def _write_m_construct(io: TextIO, this: str, slot: str) -> None:
-        io.write(
-f"""$scoreboard players operation {this} {MCF.sb_general} = $({slot}) {MCF.sb_general}
-"""
-        )
-    
-    @staticmethod
-    def duplicate(init_val: ConditionConvertible, void: bool = False) -> Condition:
+    def duplicate(
+        init_val: ConditionConvertible | None = False,
+        void: bool = False
+    ) -> Condition:
         return Condition(init_val, void)
 
-    @staticmethod
-    def _write_set(io: TextIO, this: str, this_sb: str, value: str) -> None:
-        io.write(
-f"""scoreboard players set {this} {this_sb} {value}
-"""
-        )
-
-    @staticmethod
-    def _write_assign(
-        io: TextIO,
-        this: str, this_sb: str,
-        that: str, that_sb: str
-    ) -> None:
-        io.write(
-f"""scoreboard players operation {this} {this_sb} = {that} {that_sb}
-"""
-        )
-
     def move(self, dist: str) -> None:
-        MCF.write(
-            self._write_move,
-            self._mcf_id, dist
-        )
-
-    @staticmethod
-    def _write_move(io: TextIO, this: str, dist: str) -> None:
-        io.write(
-f"""execute store result storage {MCF.storage} {dist} int 1.0 run scoreboard players get {this} {MCF.sb_general}
-"""            
+        ScoreBoard.to_storage(
+            dist, self._mcf_id, MCF.sb_general, 1.0
         )
 
     def collect(self, src: str) -> None:
-        MCF.write(self._write_collect, self._mcf_id, src)
-
-    @staticmethod
-    def _write_collect(io: TextIO, this: str, src: str) -> None:
-        io.write(
-f"""execute store result score {this} {MCF.sb_general} run data get storage {MCF.storage} {src}
-"""            
+        ScoreBoard.from_storage(
+            src, self._mcf_id, MCF.sb_general, 1.0
         )
 
     def And(self, value: ConditionConvertible) -> Condition:
+        """与另一`Condition`或`bool`做逻辑与操作，返回新布尔值"""
         temp = Condition(self)
         if isinstance(value, bool):
             if not value:
-                MCF.write(
-                    self._write_set,
-                    temp._mcf_id, MCF.sb_general,
-                    '0'
+                ScoreBoard.players_set(
+                    temp._mcf_id, MCF.sb_general, '0'
                 )
             else:
-                MCF.write(
-                    self._write_set,
-                    MCF.CALC_CONST, MCF.sb_sys,
-                    '1'
+                ScoreBoard.players_set(
+                    MCF.CALC_CONST, MCF.sb_sys, '1'
                 )
-                MCF.write(
-                    self._write_and_or,
-                    temp._mcf_id, MCF.sb_general,
-                    '<',
+                ScoreBoard.players_operation(
+                    temp._mcf_id, MCF.sb_general, '<',
                     MCF.CALC_CONST, MCF.sb_sys
                 )
         elif isinstance(value, Condition):
-            MCF.write(
-                self._write_and_or,
-                temp._mcf_id, MCF.sb_general,
-                '<',
+            ScoreBoard.players_operation(
+                temp._mcf_id, MCF.sb_general, '<',
                 value._mcf_id, MCF.sb_general
             )
         else:
@@ -174,33 +174,22 @@ f"""execute store result score {this} {MCF.sb_general} run data get storage {MCF
                 value
             )
         return temp
-    
+
     def Or(self, value: ConditionConvertible) -> Condition:
+        """与另一`Condition`或`bool`做逻辑或操作，返回新布尔值"""
         temp = Condition(self)
         if isinstance(value, bool):
             if value:
-                MCF.write(
-                    self._write_set,
-                    temp._mcf_id, MCF.sb_general,
-                    '1'
-                )
+                ScoreBoard.players_set(temp._mcf_id, MCF.sb_general, '1')
             else:
-                MCF.write(
-                    self._write_set,
-                    MCF.CALC_CONST, MCF.sb_sys,
-                    '0'
-                )
-                MCF.write(
-                    self._write_and_or,
-                    temp._mcf_id, MCF.sb_general,
-                    '>',
+                ScoreBoard.players_set(MCF.CALC_CONST, MCF.sb_sys, '0')
+                ScoreBoard.players_operation(
+                    temp._mcf_id, MCF.sb_general, '>',
                     MCF.CALC_CONST, MCF.sb_sys
                 )
         elif isinstance(value, Condition):
-            MCF.write(
-                self._write_and_or,
-                temp._mcf_id, MCF.sb_general,
-                '>',
+            ScoreBoard.players_operation(
+                temp._mcf_id, MCF.sb_general, '>',
                 value._mcf_id, MCF.sb_general
             )
         else:
@@ -210,68 +199,32 @@ f"""execute store result score {this} {MCF.sb_general} run data get storage {MCF
             )
         return temp
 
-    @staticmethod
-    def _write_and_or(
-        io: TextIO,
-        this: str, this_sb: str,
-        ops: str,
-        that: str, that_sb: str
-    ) -> None:
-        io.write(
-f"""scoreboard players operation {this} {this_sb} {ops} {that} {that_sb}
-"""
-        )
-
     def Not(self) -> Condition:
+        """返回值与自身逻辑非后值一致的新布尔值"""
         temp = Condition(self)
-        MCF.write(
-            self._write_not,
-            temp._mcf_id, MCF.sb_general
-        )
+        self._not(temp._mcf_id)
         return temp
 
-    def reverse(self) -> Condition:
-        MCF.write(
-            self._write_not,
-            self._mcf_id, MCF.sb_general
-        )
-        return self
+    def Reverse(self) -> None:
+        """对自身做逻辑非，无返回值"""
+        self._not(self._mcf_id)
 
-    @staticmethod
-    def _write_not(io: TextIO, this: str, this_sb: str) -> None:
-        io.write(
-f"""scoreboard players add {this} {this_sb} 1
-scoreboard players set {MCF.CALC_CONST} {MCF.sb_sys} 2
-scoreboard players operation {this} {this_sb} %= {MCF.CALC_CONST} {MCF.sb_sys}
-"""
+    def _not(self, this: str) -> None:
+        ScoreBoard.players_add(this, MCF.sb_general, 1)
+        ScoreBoard.players_set(MCF.CALC_CONST, MCF.sb_sys, 2)
+        ScoreBoard.players_operation(
+            this, MCF.sb_general, "%=", MCF.CALC_CONST, MCF.sb_sys
         )
 
     def __del__(self) -> None:
-        if self._do_gc:
-            index = 0
-            for obj in MCF._context:
-                if obj._mcf_id == self._mcf_id:
-                    MCF._context.pop(index)
-                index += 1
-            if not MCF.stop_gc:
-                MCF.write(
-                    self._write_rm,
-                    self._mcf_id, MCF.sb_general
-                )
-    
+        if self._gc_sign != 'shadow':
+            MCF.removeContext(self)
+        if self._gc_sign == 'norm' and not MCF.stop_gc:
+            ScoreBoard.players_reset(self._mcf_id, MCF.sb_general)
+
     def rm(self) -> None:
-        MCF.write(
-            self._write_rm,
-            self._mcf_id, MCF.sb_general
-        )
-    
-    @staticmethod
-    def _write_rm(io: TextIO, this: str, this_sb: str) -> None:
-        io.write(
-f"""scoreboard players reset {this} {this_sb}
-"""
-        )
- 
+        ScoreBoard.players_reset(self._mcf_id, MCF.sb_general)
+
 
 Integer = NewType("Integer", MCFVariable)
 IntegerConvertible: TypeAlias = Integer | int
@@ -282,27 +235,14 @@ class Integer(MCFVariable):
         init_val: IntegerConvertible | None = 0,
         void: bool = False
     ):
-        super().__init__()
-        if not void:
-            self._mcf_id = MCF.getFID()
-            shadow = Integer(None, True)
-            shadow._mcf_id = self._mcf_id
-            shadow._do_gc = False
-            MCF._context.append(shadow)
-        if init_val is None: return
-        self.assign(init_val)
+        super().__init__(init_val, void)
 
     def assign(self, value: IntegerConvertible) -> Integer:
         if isinstance(value, int):
-            MCF.write(
-                self._write_const_sb,
-                self._mcf_id, MCF.sb_general,
-                str(value)
-            )
+            ScoreBoard.players_set(self._mcf_id, MCF.sb_general, value)
         elif isinstance(value, Integer):
-            MCF.write(
-                self._write_operation,
-                self._mcf_id, MCF.sb_general,
+            ScoreBoard.players_operation(
+                self._mcf_id, MCF.sb_general, "=",
                 value._mcf_id, MCF.sb_general
             )
         else:
@@ -313,39 +253,34 @@ class Integer(MCFVariable):
         return self
 
     def rm(self) -> None:
-        MCF.write(
-            self._write_rm,
-            self._mcf_id, MCF.sb_general
-        )
+        ScoreBoard.players_reset(self._mcf_id, MCF.sb_general)
 
     def move(self, dist: str) -> None:
-        MCF.write(
-            self._write_move,
-            self._mcf_id, dist
+        ScoreBoard.to_storage(
+            dist, self._mcf_id, MCF.sb_general, 1.0
         )
 
     def collect(self, src: str) -> None:
-        MCF.write(self._write_collect, self._mcf_id, src)
+        ScoreBoard.from_storage(
+            src, self._mcf_id, MCF.sb_general, 1.0
+        )
 
     @staticmethod
     def macro_construct(slot: str, mcf_id: str) -> Integer:
         temp = Integer(None, True)
         temp._mcf_id = mcf_id
-        MCF.write(
-            Integer._write_m_construct,
-            temp._mcf_id, slot
+        ScoreBoard.players_operation(
+            temp._mcf_id, MCF.sb_general, "=",
+            f"$({slot})", MCF.sb_general,
+            macro=True
         )
         return temp
 
     @staticmethod
-    def _write_m_construct(io: TextIO, this: str, slot: str) -> None:
-        io.write(
-f"""$scoreboard players operation {this} {MCF.sb_general} = $({slot}) {MCF.sb_general}
-"""
-        )
-
-    @staticmethod
-    def duplicate(init_val: IntegerConvertible, void: bool = False) -> Integer:
+    def duplicate(
+        init_val: IntegerConvertible | None = 0,
+        void: bool = False
+    ) -> Integer:
         return Integer(init_val, void)
 
     def __pos__(self) -> Integer:
@@ -353,19 +288,23 @@ f"""$scoreboard players operation {this} {MCF.sb_general} = $({slot}) {MCF.sb_ge
 
     def __neg__(self) -> Integer:
         temp = Integer(self)
-        MCF.write(
-            self._write_neg,
-            MCF.CALC_CONST, MCF.sb_sys,
-            temp._mcf_id, MCF.sb_general
+        ScoreBoard.players_set(MCF.CALC_CONST, MCF.sb_sys, -1)
+        ScoreBoard.players_operation(
+            temp._mcf_id, MCF.sb_general, "*=",
+            MCF.CALC_CONST, MCF.sb_sys
         )
         return temp
 
     def __abs__(self) -> Integer:
         temp = Integer(self)
-        MCF.write(
-            self._write_abs,
-            MCF.CALC_CONST, MCF.sb_sys,
-            temp._mcf_id, MCF.sb_general
+        ScoreBoard.players_set(MCF.CALC_CONST, MCF.sb_sys, '-1')
+        Execute().condition('if').score_matches(
+            temp._mcf_id, MCF.sb_general, None, -1
+        ).run(
+            ScoreBoard.players_operation(
+                temp._mcf_id, MCF.sb_general, "*=",
+                MCF.CALC_CONST, MCF.sb_sys
+            )
         )
         return temp
 
@@ -376,32 +315,22 @@ f"""$scoreboard players operation {this} {MCF.sb_general} = $({slot}) {MCF.sb_ge
     ) -> Integer:
         temp = Integer(None)
         if isinstance(other, int):
-            MCF.write(
-                self._write_operation,
-                temp._mcf_id, MCF.sb_general,
+            ScoreBoard.players_operation(
+                temp._mcf_id, MCF.sb_general, "=",
                 self._mcf_id, MCF.sb_general
             )
-            MCF.write(
-                self._write_const_sb,
-                MCF.CALC_CONST, MCF.sb_sys,
-                str(other)
-            )
-            MCF.write(
-                self._write_ops_between,
-                temp._mcf_id, MCF.sb_general,
-                ops,
+            ScoreBoard.players_set(MCF.CALC_CONST, MCF.sb_sys, other)
+            ScoreBoard.players_operation(
+                temp._mcf_id, MCF.sb_general, f"{ops}=",
                 MCF.CALC_CONST, MCF.sb_sys
             )
         elif isinstance(other, Integer):
-            MCF.write(
-                self._write_operation,
-                temp._mcf_id, MCF.sb_general,
+            ScoreBoard.players_operation(
+                temp._mcf_id, MCF.sb_general, "=",
                 self._mcf_id, MCF.sb_general
             )
-            MCF.write(
-                self._write_ops_between,
-                temp._mcf_id, MCF.sb_general,
-                ops,
+            ScoreBoard.players_operation(
+                temp._mcf_id, MCF.sb_general, f"{ops}=",
                 other._mcf_id, MCF.sb_general
             )
         else:
@@ -418,27 +347,18 @@ f"""$scoreboard players operation {this} {MCF.sb_general} = $({slot}) {MCF.sb_ge
     ) -> Integer:
         temp = Integer(None)
         if isinstance(left, int):
-            MCF.write(
-                self._write_const_sb,
-                temp._mcf_id, MCF.sb_general,
-                left
-            )
-            MCF.write(
-                self._write_ops_between,
-                temp._mcf_id, MCF.sb_general,
-                ops,
+            ScoreBoard.players_set(temp._mcf_id, MCF.sb_general, left)
+            ScoreBoard.players_operation(
+                temp._mcf_id, MCF.sb_general, f"{ops}=",
                 self._mcf_id, MCF.sb_general
             )
         elif isinstance(left, Integer):
-            MCF.write(
-                self._write_operation,
-                temp._mcf_id, MCF.sb_general,
+            ScoreBoard.players_operation(
+                temp._mcf_id, MCF.sb_general, "=",
                 left._mcf_id, MCF.sb_general
             )
-            MCF.write(
-                self._write_ops_between,
-                temp._mcf_id, MCF.sb_general,
-                ops,
+            ScoreBoard.players_operation(
+                temp._mcf_id, MCF.sb_general, f"{ops}=",
                 self._mcf_id, MCF.sb_general
             )
         else:
@@ -454,30 +374,19 @@ f"""$scoreboard players operation {this} {MCF.sb_general} = $({slot}) {MCF.sb_ge
         ops: str
     ) -> None:
         if isinstance(other, int):
-            if ops == '+' or ops == '-':
-                MCF.write(
-                    self._write_shortcut,
-                    self._mcf_id, MCF.sb_general,
-                    "add" if ops == '+' else "remove",
-                    str(other)
-                )
+            if ops == '+':
+                ScoreBoard.players_add(self._mcf_id, MCF.sb_general, other)
+            elif ops == '-':
+                ScoreBoard.players_remove(self._mcf_id, MCF.sb_general, other)
             else:
-                MCF.write(
-                    self._write_const_sb,
-                    MCF.CALC_CONST, MCF.sb_sys,
-                    str(other)
-                )
-                MCF.write(
-                    self._write_ops_between,
-                    self._mcf_id, MCF.sb_general,
-                    ops,
+                ScoreBoard.players_set(MCF.CALC_CONST, MCF.sb_sys, other)
+                ScoreBoard.players_operation(
+                    self._mcf_id, MCF.sb_general, f"{ops}=",
                     MCF.CALC_CONST, MCF.sb_sys
                 )
         elif isinstance(other, Integer):
-            MCF.write(
-                self._write_ops_between,
-                self._mcf_id, MCF.sb_general,
-                ops,
+            ScoreBoard.players_operation(
+                self._mcf_id, MCF.sb_general, f"{ops}=",
                 other._mcf_id, MCF.sb_general
             )
         else:
@@ -492,28 +401,28 @@ f"""$scoreboard players operation {this} {MCF.sb_general} = $({slot}) {MCF.sb_ge
         except MCFTypeError:
             return NotImplemented
         return self
-    
+
     def __isub__(self, other: IntegerConvertible) -> Integer:
         try:
             self._i_operation(other, '-')
         except MCFTypeError:
             return NotImplemented
         return self
-    
+
     def __ifloordiv__(self, other: IntegerConvertible) -> Integer:
         try:
             self._i_operation(other, '/')
         except MCFTypeError:
             return NotImplemented
         return self
-    
+
     def __imul__(self, other: IntegerConvertible) -> Integer:
         try:
             self._i_operation(other, '*')
         except MCFTypeError:
             return NotImplemented
         return self
-    
+
     def __imod__(self, other: IntegerConvertible) -> Integer:
         try:
             self._i_operation(other, '%')
@@ -535,7 +444,7 @@ f"""$scoreboard players operation {this} {MCF.sb_general} = $({slot}) {MCF.sb_ge
             return self._operation(other, '+')
         except MCFTypeError:
             return NotImplemented
-    
+
     def __radd__(self, left: IntegerConvertible) -> Integer:
         return self + left
 
@@ -544,7 +453,7 @@ f"""$scoreboard players operation {this} {MCF.sb_general} = $({slot}) {MCF.sb_ge
             return self._operation(other, '-')
         except MCFTypeError:
             return NotImplemented
-    
+
     def __rsub__(self, left: IntegerConvertible) -> Integer:
         try:
             return self._r_operation(left, '-')
@@ -556,7 +465,7 @@ f"""$scoreboard players operation {this} {MCF.sb_general} = $({slot}) {MCF.sb_ge
             return self._operation(other, '/')
         except MCFTypeError:
             return NotImplemented
-    
+
     def __rfloordiv__(self, left: IntegerConvertible) -> Integer:
         try:
             return self._r_operation(left, '/')
@@ -576,131 +485,45 @@ f"""$scoreboard players operation {this} {MCF.sb_general} = $({slot}) {MCF.sb_ge
             return NotImplemented
 
     def __del__(self):
-        if self._do_gc:
-            index = 0
-            for obj in MCF._context:
-                if obj._mcf_id == self._mcf_id:
-                    MCF._context.pop(index)
-                index += 1
-            if not MCF.stop_gc:
-                MCF.write(
-                    self._write_rm,
-                    self._mcf_id, MCF.sb_general
-                )
+        if self._gc_sign != 'shadow':
+            MCF.removeContext(self)
+        if self._gc_sign == 'norm' and not MCF.stop_gc:
+            ScoreBoard.players_reset(self._mcf_id, MCF.sb_general)
 
-    @staticmethod
-    def _write_const_sb(io: TextIO, this, sb, val) -> None:
-        io.write(
-f"""scoreboard players set {this} {sb} {val}
-"""
-        )
-    
-    @staticmethod
-    def _write_operation(
-        io: TextIO,
-        this, this_sb,
-        that, that_sb
-    ) -> None:
-        io.write(
-f"""scoreboard players operation {this} {this_sb} = {that} {that_sb}
-"""
-        )
-
-    @staticmethod
-    def _write_ops_between(
-        io: TextIO,
-        this, this_sb,
-        operator,
-        that, that_sb
-    ) -> None:
-        io.write(
-f"""scoreboard players operation {this} {this_sb} {operator}= {that} {that_sb}
-"""
-        )
-
-    @staticmethod
-    def _write_rm(
-        io: TextIO,
-        this, this_sb
-    ) -> None:
-        io.write(
-f"""scoreboard players reset {this} {this_sb}
-"""
-        )
-
-    @staticmethod
-    def _write_shortcut(
-        io: TextIO,
-        this: str, this_sb: str,
-        tp: str, val: str
-    ) -> None:
-        io.write(
-f"""scoreboard players {tp} {this} {this_sb} {val}
-"""
-        )
-
-    @staticmethod
-    def _write_move(io: TextIO, this: str, dist: str) -> None:
-        io.write(
-f"""execute store result storage {MCF.storage} {dist} int 1.0 run scoreboard players get {this} {MCF.sb_general}
-"""            
-        )
-
-    @staticmethod
-    def _write_collect(io: TextIO, this: str, src: str) -> None:
-        io.write(
-f"""execute store result score {this} {MCF.sb_general} run data get storage {MCF.storage} {src}
-"""            
-        )
-    
-    @staticmethod
-    def _write_neg(
-        io: TextIO,
-        cst: str, cst_sb: str,
-        this: str, this_sb: str
-    ) -> None:
-        io.write(
-f"""scoreboard players set {cst} {cst_sb} -1
-scoreboard players operation {this} {this_sb} *= {cst} {cst_sb}
-"""
-        )
-
-    @staticmethod
-    def _write_abs(
-        io: TextIO,
-        cst: str, cst_sb: str,
-        this: str, this_sb: str
-    ) -> None:
-        io.write(
-f"""scoreboard players set {cst} {cst_sb} -1
-execute if score {this} {this_sb} matches ..-1 run scoreboard players operation {this} {this_sb} *= {cst} {cst_sb}
-"""
-        )
 
     def _compare(
         self,
-        value: ConditionConvertible,
-        const_cmp: str,
-        cmp: str, 
+        value: IntegerConvertible,
+        index: list[int],
+        compare: str,
         offset: int = 0,
         reverse: bool = False
     ) -> Condition:
-        temp = Condition(reverse)
+        temp = Condition(False)
         if isinstance(value, int):
-            MCF.write(
-                self._write_const_cmp,
-                self._mcf_id, MCF.sb_general,
-                temp._mcf_id, MCF.sb_general,
-                const_cmp.format(value + offset),
-                reverse
+            cmp_range = [None, None]
+            for idx in index:
+                cmp_range[idx] = value + offset
+            Execute().condition(
+                'unless' if reverse else 'if'
+            ).score_matches(
+                self._mcf_id, MCF.sb_general, cmp_range[0],
+                cmp_range[1]
+            ).run(
+                ScoreBoard.players_set(
+                    temp._mcf_id, MCF.sb_general, 1
+                )
             )
         elif isinstance(value, Integer):
-            MCF.write(
-                self._write_compare,
-                self._mcf_id, MCF.sb_general,
-                value._mcf_id, MCF.sb_general,
-                temp._mcf_id, MCF.sb_general,
-                cmp, reverse
+            Execute().condition(
+                'unless' if reverse else 'if'
+            ).score_compare(
+                self._mcf_id, MCF.sb_general, compare,
+                value._mcf_id, MCF.sb_general
+            ).run(
+                ScoreBoard.players_set(
+                    temp._mcf_id, MCF.sb_general, 1
+                )
             )
         else:
             raise MCFTypeError(
@@ -711,64 +534,37 @@ execute if score {this} {this_sb} matches ..-1 run scoreboard players operation 
 
     def __eq__(self, value: IntegerConvertible) -> Condition:
         try:
-            return self._compare(value, "{}", "=")
+            return self._compare(value, [0, 1], "=", 0, False)
         except MCFTypeError:
             return NotImplemented
 
     def __ne__(self, value: IntegerConvertible) -> Condition:
         try:
-            return self._compare(value, "{}", "=", 0, True)
+            return self._compare(value, [0, 1], "=", 0, True)
         except MCFTypeError:
             return NotImplemented
 
     def __le__(self, value: IntegerConvertible) -> Condition:
         try:
-            return self._compare(value, "..{}", "<=")
+            return self._compare(value, [1], "<=", 0, False)
         except MCFTypeError:
             return NotImplemented
-    
+
     def __gt__(self, value: IntegerConvertible) -> Condition:
         try:
-            return self._compare(value, "{}..", ">", 1)
+            return self._compare(value, [0], ">", 1, False)
         except MCFTypeError:
             return NotImplemented
-    
+
     def __ge__(self, value: IntegerConvertible) -> Condition:
         try:
-            return self._compare(value, "{}..", ">=")
+            return self._compare(value, [0], ">=", 0, False)
         except MCFTypeError:
             return NotImplemented
 
     def __lt__(self, value: IntegerConvertible) -> Condition:
         try:
-            return self._compare(value, "..{}", "<", -1)
+            return self._compare(value, [1], "<", -1, False)
         except MCFTypeError:
             return NotImplemented
-    
-    @staticmethod
-    def _write_const_cmp(
-        io: TextIO,
-        this: str, this_sb: str,
-        that: str, that_sb: str,
-        cond: str, reverse: bool
-    ) -> None:
-        val = '0' if reverse else '1'
-        io.write(
-f"""execute if score {this} {this_sb} matches {cond} run scoreboard players set {that} {that_sb} {val}
-"""
-        )
-    
-    @staticmethod
-    def _write_compare(
-        io: TextIO,
-        this: str, this_sb: str,
-        that: str, that_sb: str,
-        cond: str, cond_sb: str,
-        cmp: str, reverse: bool
-    ) -> None:
-        val = '0' if reverse else '1'
-        io.write(
-f"""execute if score {this} {this_sb} {cmp} {that} {that_sb} run scoreboard players set {cond} {cond_sb} {val}
-"""
-        )
 

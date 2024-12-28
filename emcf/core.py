@@ -1,17 +1,15 @@
 
-from .database import *
+from ._database import *
 from ._utils import getMultiPaths
-from typing import TypeAlias, Any, Literal, TextIO, Callable, Protocol
+from typing import TypeAlias, Any, Literal, TextIO, Callable, Protocol, TypeVarTuple
 import os, random
 
 EMCF = "a0.1.0"
 
+GCSign: TypeAlias = Literal['shadow', 'norm', 'none']
 ConfigMap: TypeAlias = dict[Literal[
     "namespace", "version", "dist", "prefix", "gc"
 ], Any]
-
-class MCFWriter(Protocol):
-    def __call__(self, io: TextIO, *args: Any): ...
 
 MCFVersion: TypeAlias = Literal[1204, 1211]
 
@@ -53,9 +51,10 @@ class MCFunction:
     _prefix: str
     _io_ptr: str
     _io_history: list[str]
+    _io_redirect: Any | None
     _component_reg: dict[str, str]
-    _context: list
-    _context_stack: list[list]
+    _context: dict[str, Any]
+    _context_stack: list[dict[str, Any]]
 
     sb_general: str
     sb_sys: str
@@ -80,8 +79,9 @@ class MCFunction:
         self._io_history = []
         self._io_ptr = None
         self._component_reg = dict()
-        self._context = []
+        self._context = {}
         self._context_stack = []
+        self._io_redirect = None
         self.do_gc = True
         self.stop_gc = False
 
@@ -93,6 +93,7 @@ class MCFunction:
         self._prefix = cfg_map.get("prefix", self._prefix)
         self.do_gc = cfg_map.get("gc", self.do_gc)
         self._component_reg.clear()
+        self._io_redirect = None
         self._context.clear()
         self._context_stack.clear()
 
@@ -162,9 +163,14 @@ scoreboard players set {MCF.TERMINATE} {self.sb_sys} 0
     def builtinSign(self, func_id: str) -> str:
         return self._component_reg.get(func_id)
 
-    def write(self, _writer: MCFWriter, *args: Any) -> None:
-        with open(self._io_ptr, 'a') as file:
-            _writer(file, *args)
+    def write(self, command_lines: str, macro: bool) -> None:
+        """向当前函数文件内写入命令"""
+        prefix = '$' if macro else ''
+        if self._io_redirect is not None:
+            self._io_redirect.write(prefix + command_lines)
+        else:
+            with open(self._io_ptr, 'a') as file:
+                file.write(prefix + command_lines)
 
     def forward(self, path: str) -> None:
         self._io_history.append(path)
@@ -174,5 +180,17 @@ scoreboard players set {MCF.TERMINATE} {self.sb_sys} 0
         if len(self._io_history) <= 1: return
         self._io_history.pop()
         self._io_ptr = self._io_history[-1]
+
+    def redirect(self, dist: Any | None) -> None:
+        self._io_redirect = dist
+
+    def addContext(self, variable: Any) -> None:
+        shadow = variable.duplicate(None, True)
+        shadow._mcf_id = variable._mcf_id
+        shadow._gc_sign = 'shadow'
+        self._context[shadow._mcf_id] = shadow
+
+    def removeContext(self, variable: Any) -> None:
+        self._context.pop(variable._mcf_id)
 
 MCF = MCFunction()
