@@ -13,7 +13,7 @@ def say(obj: Any, target: Selector | None = None) -> None:
     if target is None:
         target = Selector("@s")
     
-    MCF.exportComponent("display.say")
+    MCF.useComponent("display.say", {})
 
     with target:
         if isinstance(obj, MCFVariable):

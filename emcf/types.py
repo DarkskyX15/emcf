@@ -5,6 +5,7 @@ MCF所有基础变量的封装
 from .core import MCF, GCSign
 from ._exceptions import *
 from ._writers import *
+from ._components import builtin_components as built_cps
 from typing import TypeAlias, NewType, Any, Union, TextIO, Self, Literal
 
 
@@ -36,25 +37,43 @@ class MCFVariable:
         if not void:
             self._mcf_id = MCF.getFID()
             MCF.addContext(self)
-        if init_val is not None:
-            self.assign(init_val)
+            if init_val is not None:
+                self.assign(init_val)
+
+    def __del__(self) -> None:
+        if self._gc_sign != 'shadow':
+            MCF.removeContext(self)
+        if self._gc_sign == 'norm' and not MCF.stop_gc:
+            self.rm()
 
     def assign(self, value: Any):
         """将`value`赋值至自身"""
-        return NotImplemented
+        raise NotImplementedError
 
     def move(self, dist: str):
-        """将变量值移动至storage的`dist`位置"""
-        return NotImplemented
+        """将变量移动至storage的`dist`位置"""
+        raise NotImplementedError
 
     def collect(self, src: str):
         """从storage的`src`位置收集数据"""
-        return NotImplemented
+        raise NotImplementedError
+
+    def extract(self, dist: str):
+        """将变量解包至storage的`dist`位置。与`move`方法不同的是，`extract`产生的
+        值可以直接用于nbt中，而不是与`move`一样移动变量整个的实现结构。
+        """
+        raise NotImplementedError
+
+    def construct(self, src):
+        """依靠storage的`src`路径处的数据创建变量。与`collect`方法不同的是，
+        `collect`依赖的数据必须有完整的数据结构，而`construct`可直接从nbt值上创建变量。
+        """
+        raise NotImplementedError
 
     @staticmethod
     def macro_construct(slot: str, mcf_id: str):
         """从`slot`指定的宏位置创建Fool ID为`mcf_id`的实例"""
-        return NotImplemented
+        raise NotImplementedError
 
     def duplicate(
         self,
@@ -62,11 +81,11 @@ class MCFVariable:
         void: bool = False
     ):
         """产生与自身类型相同的对象"""
-        return NotImplemented
+        raise NotImplementedError
 
     def rm(self):
         """写清除指令，但不将自身移出上下文"""
-        return NotImplemented
+        raise NotImplementedError
 
 
 class FakeNone(MCFVariable):
@@ -87,6 +106,10 @@ class FakeNone(MCFVariable):
         void: bool = True
     ) -> Self:
         return FakeNone(None, True)
+
+    # 不做回收处理
+    def __del__(self):
+        pass
 
 
 Condition = NewType("Condition", MCFVariable)
@@ -143,6 +166,16 @@ class Condition(MCFVariable):
         )
 
     def collect(self, src: str) -> None:
+        ScoreBoard.from_storage(
+            src, self._mcf_id, MCF.sb_general, 1.0
+        )
+
+    def extract(self, dist: str) -> None:
+        ScoreBoard.to_storage(
+            dist, self._mcf_id, MCF.sb_general, 1.0, 'byte'
+        )
+
+    def construct(self, src: str) -> None:
         ScoreBoard.from_storage(
             src, self._mcf_id, MCF.sb_general, 1.0
         )
@@ -216,12 +249,6 @@ class Condition(MCFVariable):
             this, MCF.sb_general, "%=", MCF.CALC_CONST, MCF.sb_sys
         )
 
-    def __del__(self) -> None:
-        if self._gc_sign != 'shadow':
-            MCF.removeContext(self)
-        if self._gc_sign == 'norm' and not MCF.stop_gc:
-            ScoreBoard.players_reset(self._mcf_id, MCF.sb_general)
-
     def rm(self) -> None:
         ScoreBoard.players_reset(self._mcf_id, MCF.sb_general)
 
@@ -261,6 +288,16 @@ class Integer(MCFVariable):
         )
 
     def collect(self, src: str) -> None:
+        ScoreBoard.from_storage(
+            src, self._mcf_id, MCF.sb_general, 1.0
+        )
+
+    def extract(self, dist: str, _type: IntegerVariableTypes) -> None:
+        ScoreBoard.to_storage(
+            dist, self._mcf_id, MCF.sb_general, 1.0, _type
+        )
+
+    def construct(self, src: str) -> None:
         ScoreBoard.from_storage(
             src, self._mcf_id, MCF.sb_general, 1.0
         )
@@ -484,12 +521,6 @@ class Integer(MCFVariable):
         except:
             return NotImplemented
 
-    def __del__(self):
-        if self._gc_sign != 'shadow':
-            MCF.removeContext(self)
-        if self._gc_sign == 'norm' and not MCF.stop_gc:
-            ScoreBoard.players_reset(self._mcf_id, MCF.sb_general)
-
 
     def _compare(
         self,
@@ -568,3 +599,133 @@ class Integer(MCFVariable):
         except MCFTypeError:
             return NotImplemented
 
+
+Float = NewType("Float", MCFVariable)
+FloatConvertible: TypeAlias = Float | float | int
+class Float(MCFVariable):
+    def __init__(
+        self,
+        init_val: FloatConvertible | None = 0.0,
+        void: bool = False
+    ):
+        super().__init__(init_val, void)
+        MCF.useComponent('math.float.compute', built_cps.float_compute)
+        MCF.useComponent('math.float.construct', built_cps.float_construct)
+        MCF.useComponent('math.pow10', built_cps.math_pow10)
+    
+    @staticmethod
+    def _extract_float(f: float) -> tuple[int, int, int]:
+        f_str = "{:.8e}".format(f)
+        front, back = f_str.split('e')
+        for idx in range(len(front) - 1, -1, -1):
+            if front[idx] != '0':
+                break
+        size = idx
+        front = front[:idx + 1]
+        back = int(back)
+        front = front.split('.')
+        front = int(front[0] + front[1])
+        return (front, back, size)
+
+    def assign(self, value: FloatConvertible) -> Float:
+        if isinstance(value, int):
+            value = float(value)
+        if isinstance(value, float):
+            a, e, v = self._extract_float(value)
+            if a == 0: v = 0
+            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value(
+                '{' + f"a:{a}, e:{e}b, v:{v}b" + '}'
+            )
+        elif isinstance(value, Float):
+            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
+                Data.storage(MCF.storage), f"mem.{value._mcf_id}"
+            )
+        else:
+            raise MCFTypeError(
+                "Can not use {} as value for Float.",
+                value
+            )
+        return self
+    
+    def move(self, dist: str) -> None:
+        Data.storage(MCF.storage).modify_set(dist).via(
+            Data.storage(MCF.storage), f"mem.{self._mcf_id}"
+        )
+
+    def collect(self, src: str) -> None:
+        Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
+            Data.storage(MCF.storage), src
+        )
+
+    def construct(self, src: str) -> None:
+        Data.storage(MCF.storage).modify_set("register").via(
+            Data.storage(MCF.storage), src
+        )
+        Function(MCF.builtinSign('math.float.construct.scaler')).call()
+        Function(MCF.builtinSign('math.float.construct.reduction')).call()
+        Function(MCF.builtinSign('math.float.construct.refine')).call()
+        ScoreBoard.to_storage(
+            f"mem.{self._mcf_id}.a", MCF.GENERAL, MCF.sb_sys, 1.0, 'int'
+        )
+        ScoreBoard.to_storage(
+            f"mem.{self._mcf_id}.e", MCF.BUFFER1, MCF.sb_sys, 1.0, 'byte'
+        )
+        ScoreBoard.to_storage(
+            f"mem.{self._mcf_id}.v", MCF.BUFFER2, MCF.sb_sys, 1.0, 'byte'
+        )
+
+    def duplicate(
+        self, 
+        init_val: FloatConvertible | None = 0.0,
+        void: bool = False
+    ) -> Float:
+        return Float(init_val, void)
+    
+    @staticmethod
+    def _type_reduction(other: FloatConvertible) -> Float:
+        reduced = float(other) if isinstance(other, int) else other
+        if not isinstance(reduced, float) and not isinstance(reduced, Float):
+            raise MCFTypeError("Can not operate {} with a Float.", other)
+        reduced = Float(reduced) if isinstance(reduced, float) else reduced
+        return reduced
+
+    @staticmethod
+    def _operate(left: Float, right: Float, ops: str) -> Float:
+        temp = Float(None, False)
+        if ops == '+' or ops == '-':
+            Data.storage(MCF.storage).modify_set("cache.left").via(
+                Data.storage(MCF.storage), f"mem.{left._mcf_id}"
+            )
+            Data.storage(MCF.storage).modify_set("cache.right").via(
+                Data.storage(MCF.storage), f"mem.{right._mcf_id}"
+            )
+            branch = 'plus' if ops == '+' else 'sub'
+            Function(
+                MCF.builtinSign(f"math.float.compute.run_{branch}")
+            ).call()
+            temp.collect("register")
+        elif ops == '*' or ops == '/':
+            pass
+        else:
+            raise MCFTypeError(
+                "Unsupported operation type '{}' for Float.", ops
+            )
+        return temp
+
+    def _operation(self, other: FloatConvertible, ops: str) -> Float:
+        target = Float._type_reduction(other)
+        temp = Float._operate(self, target, ops)
+        return temp
+
+
+
+    def _r_operation(self, left: FloatConvertible, ops: str) -> Float:
+        target = Float._type_reduction(left)
+        temp = Float._operate(target, self, ops)
+        return temp
+
+    def _i_operation(self,) -> None:
+        pass
+
+    def rm(self):
+        Data.storage(MCF.storage).remove(f"mem.{self._mcf_id}")

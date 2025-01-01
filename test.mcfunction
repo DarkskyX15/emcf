@@ -1,0 +1,1 @@
+scoreboard objectives add __bd__ dummy

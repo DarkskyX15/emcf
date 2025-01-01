@@ -22,7 +22,9 @@ class Selector:
         self._built = ''
         self._with_limit = False
         if target not in MCF.database.selectors:
-            raise MCFVersionError(f"Selector {target} not supported")
+            raise MCFVersionError(
+                f"Selector {target} is not supported", MCF._mcf_version
+            )
         self._built += target
 
     def __enter__(self) -> Self:

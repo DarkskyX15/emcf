@@ -1,0 +1,1 @@
+scoreboard players set __dist__ __src_bd__ 1000000000

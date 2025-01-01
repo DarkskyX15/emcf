@@ -8,6 +8,12 @@ from typing import Any, Literal, TypeAlias, Self, NewType, Callable, Generic
 NumericVariableTypes: TypeAlias = Literal[
     'int', 'float', 'short', 'long', 'double', 'byte'
 ]
+IntegerVariableTypes: TypeAlias = Literal[
+    'int', 'short', 'long', 'byte'
+]
+FloatingPointVariableTypes: TypeAlias = Literal[
+    'float', 'double'
+]
 
 __all__ = [
     'ScoreBoard',
@@ -17,6 +23,9 @@ __all__ = [
     'ReturN',
     'Say',
     'Tag',
+    'IntegerVariableTypes',
+    'NumericVariableTypes',
+    'FloatingPointVariableTypes'
 ]
 
 class _Collector:
@@ -132,7 +141,7 @@ class _ExecuteConditionContext:
         ls = '' if left is None else str(left)
         rs = '' if right is None else str(right)
         range_str = str()
-        if ls == rs:
+        if ls != rs:
             range_str = f"{ls}..{rs}"
         else:
             range_str = ls
@@ -293,13 +302,14 @@ f"""scoreboard players get {score_holder} {board_name}
         score_holder: str,
         board_name: str,
         scale: float,
+        _type: NumericVariableTypes = 'int',
         macro: bool = False
     ) -> None:
         """将位于`<score_holder> <board_name>`位置的计分板数据移动至项目储存
         的`<dist>`路径内，并乘上`<scale>`。
         """
         MCF.write(
-f"""execute store result storage {MCF.storage} {dist} int {scale} run scoreboard players get {score_holder} {board_name}
+f"""execute store result storage {MCF.storage} {dist} {_type} {scale} run scoreboard players get {score_holder} {board_name}
 """
         , macro)
     
@@ -311,7 +321,7 @@ f"""execute store result storage {MCF.storage} {dist} int {scale} run scoreboard
         scale: float,
         macro: bool = False
     ) -> None:
-        """将位于项目储存的`<dist>`路径位置的数据移动至计分板的
+        """将位于项目储存的`<src>`路径位置的数据移动至计分板的
         的`<score_holder> <board_name>`位置，并乘上`<scale>`。
         """
         MCF.write(

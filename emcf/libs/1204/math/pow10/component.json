@@ -1,0 +1,6 @@
+{
+    "namespace":"math_pow10",
+    "description": "10^n component in math module",
+    "credits": "written by Darksky",
+    "version": "r1.0.0"
+}

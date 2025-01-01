@@ -1,0 +1,6 @@
+{
+    "namespace":"math_float_make",
+    "description": "float construction component, infrastructure for float data type",
+    "credits": "written by Darksky",
+    "version": "r1.0.0"
+}

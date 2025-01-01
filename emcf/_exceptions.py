@@ -1,6 +1,5 @@
 
 from typing import Any
-from .core import MCF
 
 class MCFException(BaseException):
     def __init__(self, *args):
@@ -8,9 +7,9 @@ class MCFException(BaseException):
 
 class MCFVersionError(MCFException):
     message: str
-    def __init__(self, info: str):
+    def __init__(self, info: str, version: str):
         super().__init__(info)
-        self.message = f"{info}, present version: {MCF._mcf_version}"
+        self.message = f"{info}, present version: {version}"
     def __str__(self):
         return self.message
 
@@ -23,6 +22,14 @@ class MCFTypeError(MCFException):
         return self.message
 
 class MCFValueError(MCFException):
+    message: str
+    def __init__(self, msg: str):
+        super().__init__(msg)
+        self.message = msg
+    def __str__(self):
+        return self.message
+
+class MCFComponentError(MCFException):
     message: str
     def __init__(self, msg: str):
         super().__init__(msg)

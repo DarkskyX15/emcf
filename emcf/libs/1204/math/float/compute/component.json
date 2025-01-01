@@ -1,0 +1,10 @@
+{
+    "namespace": "math_float_calc",
+    "description": "float calculation component, infrastructure for float data type",
+    "credits": "written by Darksky",
+    "version": "r1.0.1",
+
+    "requires": [
+        "math.pow10"
+    ]
+}
