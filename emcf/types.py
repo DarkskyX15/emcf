@@ -599,13 +599,12 @@ class Integer(MCFVariable):
         except MCFTypeError:
             return NotImplemented
 
-
 Float = NewType("Float", MCFVariable)
 FloatConvertible: TypeAlias = Float | float | int
 class Float(MCFVariable):
     def __init__(
         self,
-        init_val: FloatConvertible | None = 0.0,
+        init_val: FloatConvertible | Integer | None = 0.0,
         void: bool = False
     ):
         super().__init__(init_val, void)
@@ -627,18 +626,31 @@ class Float(MCFVariable):
         front = int(front[0] + front[1])
         return (front, back, size)
 
-    def assign(self, value: FloatConvertible) -> Float:
+    def assign(self, value: FloatConvertible | Integer) -> Float:
         if isinstance(value, int):
             value = float(value)
         if isinstance(value, float):
             a, e, v = self._extract_float(value)
             if a == 0: v = 0
             Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value(
-                '{' + f"a:{a}, e:{e}b, v:{v}b" + '}'
+                '{' + f"a:{a},e:{e}b,v:{v}b" + '}'
             )
         elif isinstance(value, Float):
             Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
                 Data.storage(MCF.storage), f"mem.{value._mcf_id}"
+            )
+        elif isinstance(value, Integer):
+            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value("{}")
+            value.move("register")
+            Function(MCF.builtinSign('math.float.construct.make')).call()
+            ScoreBoard.to_storage(
+                f"mem.{self._mcf_id}.a", MCF.GENERAL, MCF.sb_sys, 1.0, 'int'
+            )
+            ScoreBoard.to_storage(
+                f"mem.{self._mcf_id}.e", MCF.BUFFER1, MCF.sb_sys, 1.0, 'byte'
+            )
+            ScoreBoard.to_storage(
+                f"mem.{self._mcf_id}.v", MCF.BUFFER2, MCF.sb_sys, 1.0, 'byte'
             )
         else:
             raise MCFTypeError(
@@ -658,12 +670,11 @@ class Float(MCFVariable):
         )
 
     def construct(self, src: str) -> None:
+        Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value("{}")
         Data.storage(MCF.storage).modify_set("register").via(
             Data.storage(MCF.storage), src
         )
-        Function(MCF.builtinSign('math.float.construct.scaler')).call()
-        Function(MCF.builtinSign('math.float.construct.reduction')).call()
-        Function(MCF.builtinSign('math.float.construct.refine')).call()
+        Function(MCF.builtinSign('math.float.construct.make')).call()
         ScoreBoard.to_storage(
             f"mem.{self._mcf_id}.a", MCF.GENERAL, MCF.sb_sys, 1.0, 'int'
         )
@@ -692,20 +703,20 @@ class Float(MCFVariable):
     @staticmethod
     def _operate(left: Float, right: Float, ops: str) -> Float:
         temp = Float(None, False)
+        left.move("cache.left")
+        right.move("cache.right")
         if ops == '+' or ops == '-':
-            Data.storage(MCF.storage).modify_set("cache.left").via(
-                Data.storage(MCF.storage), f"mem.{left._mcf_id}"
-            )
-            Data.storage(MCF.storage).modify_set("cache.right").via(
-                Data.storage(MCF.storage), f"mem.{right._mcf_id}"
-            )
             branch = 'plus' if ops == '+' else 'sub'
             Function(
                 MCF.builtinSign(f"math.float.compute.run_{branch}")
             ).call()
             temp.collect("register")
         elif ops == '*' or ops == '/':
-            pass
+            branch = 'mul' if ops == '*' else 'div'
+            Function(
+                MCF.builtinSign(f"math.float.compute.run_{branch}")
+            ).call()
+            temp.collect("register")
         else:
             raise MCFTypeError(
                 "Unsupported operation type '{}' for Float.", ops
@@ -717,15 +728,107 @@ class Float(MCFVariable):
         temp = Float._operate(self, target, ops)
         return temp
 
-
-
     def _r_operation(self, left: FloatConvertible, ops: str) -> Float:
         target = Float._type_reduction(left)
         temp = Float._operate(target, self, ops)
         return temp
 
-    def _i_operation(self,) -> None:
-        pass
+    def _i_operation(self, other: FloatConvertible, ops: str) -> None:
+        target = Float._type_reduction(other)
+        self.move("cache.left")
+        target.move("cache.right")
+        if ops == '+' or ops == '-':
+            branch = 'plus' if ops == '+' else 'sub'
+            Function(
+                MCF.builtinSign(f"math.float.compute.run_{branch}")
+            ).call()
+            self.collect("register")
+        elif ops == '*' or ops == '/':
+            branch = 'mul' if ops == '*' else 'div'
+            Function(
+                MCF.builtinSign(f"math.float.compute.run_{branch}")
+            ).call()
+            self.collect("register")
+        else:
+            raise MCFTypeError(
+                "Unsupported operation type '{}' for Float.", ops
+            )
+
+    def __add__(self, other: FloatConvertible) -> Float:
+        try:
+            return self._operation(other, '+')
+        except MCFTypeError:
+            return NotImplemented
+
+    def __radd__(self, left: FloatConvertible) -> Float:
+        try:
+            return self._r_operation(left, '+')
+        except MCFTypeError:
+            return NotImplemented
+
+    def __sub__(self, other: FloatConvertible) -> Float:
+        try:
+            return self._operation(other, '-')
+        except MCFTypeError:
+            return NotImplemented
+
+    def __rsub__(self, left: FloatConvertible) -> Float:
+        try:
+            return self._r_operation(left, '-')
+        except MCFTypeError:
+            return NotImplemented
+    
+    def __mul__(self, other: FloatConvertible) -> Float:
+        try:
+            return self._operation(other, '*')
+        except MCFTypeError:
+            return NotImplemented
+    
+    def __rmul__(self, left: FloatConvertible) -> Float:
+        try:
+            return self._r_operation(left, '*')
+        except MCFTypeError:
+            return NotImplemented
+
+    def __truediv__(self, other: FloatConvertible) -> Float:
+        try:
+            return self._operation(other, '/')
+        except MCFTypeError:
+            return NotImplemented
+    
+    def __rtruediv__(self, left: FloatConvertible) -> Float:
+        try:
+            return self._r_operation(left, '/')
+        except MCFTypeError:
+            return NotImplemented
+    
+    def __iadd__(self, other: FloatConvertible) -> Float:
+        try:
+            self._i_operation(other, '+')
+        except MCFTypeError:
+            return NotImplemented
+        return self
+
+    def __isub__(self, other: FloatConvertible) -> Float:
+        try:
+            self._i_operation(other, '-')
+        except MCFTypeError:
+            return NotImplemented
+        return self
+    
+    def __imul__(self, other: FloatConvertible) -> Float:
+        try:
+            self._i_operation(other, '*')
+        except MCFTypeError:
+            return NotImplemented
+        return self
+
+    def __itruediv__(self, other: FloatConvertible) -> Float:
+        try:
+            self._i_operation(other, '/')
+        except MCFTypeError:
+            return NotImplemented
+        return self
 
     def rm(self):
         Data.storage(MCF.storage).remove(f"mem.{self._mcf_id}")

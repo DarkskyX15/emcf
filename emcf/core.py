@@ -70,6 +70,8 @@ class MCFunction:
     BUFFER2 = "reg6"
     BUFFER3 = "reg7"
     BUFFER4 = "reg8"
+    BUFFER5 = "reg9"
+    BUFFER6 = "re10"
     CALC_CONST = "reg2"
     COND_LAST = "reg3"
     TERMINATE = "reg4"
@@ -150,6 +152,8 @@ scoreboard players set {MCF.BUFFER1} {self.sb_sys} 0
 scoreboard players set {MCF.BUFFER2} {self.sb_sys} 0
 scoreboard players set {MCF.BUFFER3} {self.sb_sys} 0
 scoreboard players set {MCF.BUFFER4} {self.sb_sys} 0
+scoreboard players set {MCF.BUFFER5} {self.sb_sys} 0
+scoreboard players set {MCF.BUFFER6} {self.sb_sys} 0
 """
             )
         self._io_history.append(f"{self.wk_root}/main.mcfunction")

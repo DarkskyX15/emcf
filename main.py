@@ -9,23 +9,16 @@ from emcf.functional import MCFunction, Return
 MCF.useConfig({
     "namespace": "test",
     "version": 1204,
-    "gc": True
+    "gc": False
 })
 
 if __name__ == '__main__':
 
-    buf1 = "__buf1__"
-    buf2 = "__buf2__"
-    buf3 = "__buf3__"
-    gen = "__gen__"
-    bd = "__bd__"
-    st = "__st__"
-    namespace = "math_float_calc"
+    var1 = Integer(11)
 
-    var1 = Float(114.514)
-    var2 = Float(0.0)
+    var3 = Float(var1) / 0.1514
+    var4 = 114.514 * var3
 
-    say(Float._operate(var1, var2, '+'))
-    say(Float._operate(var2, var1, '-'))
+    say(var4)
 
     MCF.exportComponents()

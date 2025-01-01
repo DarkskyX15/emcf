@@ -1,0 +1,1 @@
+data modify storage __st__ register set value {a:0,e:0b,v:0b}

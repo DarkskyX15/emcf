@@ -28,6 +28,8 @@ class BuiltinComponents:
             "buf2": MCF.BUFFER2,
             "buf3": MCF.BUFFER3,
             "buf4": MCF.BUFFER4,
+            "buf5": MCF.BUFFER5,
+            "buf6": MCF.BUFFER6,
             "gen": MCF.GENERAL,
             "bd": MCF.sb_sys,
             "st": MCF.storage
