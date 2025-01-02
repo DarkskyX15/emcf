@@ -1,0 +1,10 @@
+{
+    "namespace":"math_float_cmp",
+    "description": "float comparison component, infrastructure for float data type",
+    "credits": "written by Darksky",
+    "version": "r1.0.0",
+    
+    "requires": [
+        "math.pow10"
+    ]
+}

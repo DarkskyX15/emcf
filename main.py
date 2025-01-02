@@ -9,16 +9,15 @@ from emcf.functional import MCFunction, Return
 MCF.useConfig({
     "namespace": "test",
     "version": 1204,
-    "gc": False
+    "gc": True
 })
 
 if __name__ == '__main__':
 
-    var1 = Integer(11)
+    var1 = Float(1.1145)
+    var2 = Float(1.11)
 
-    var3 = Float(var1) / 0.1514
-    var4 = 114.514 * var3
-
-    say(var4)
+    say(var1 > var2)
+    say(var1 <= var2)
 
     MCF.exportComponents()

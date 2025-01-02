@@ -292,7 +292,7 @@ class Integer(MCFVariable):
             src, self._mcf_id, MCF.sb_general, 1.0
         )
 
-    def extract(self, dist: str, _type: IntegerVariableTypes) -> None:
+    def extract(self, dist: str, _type: IntegerVariableTypes = 'int') -> None:
         ScoreBoard.to_storage(
             dist, self._mcf_id, MCF.sb_general, 1.0, _type
         )
@@ -599,6 +599,7 @@ class Integer(MCFVariable):
         except MCFTypeError:
             return NotImplemented
 
+
 Float = NewType("Float", MCFVariable)
 FloatConvertible: TypeAlias = Float | float | int
 class Float(MCFVariable):
@@ -608,6 +609,8 @@ class Float(MCFVariable):
         void: bool = False
     ):
         super().__init__(init_val, void)
+        MCF.useComponent('math.float.compare', built_cps.float_compare)
+        MCF.useComponent('math.float.extract', built_cps.float_extract)
         MCF.useComponent('math.float.compute', built_cps.float_compute)
         MCF.useComponent('math.float.construct', built_cps.float_construct)
         MCF.useComponent('math.pow10', built_cps.math_pow10)
@@ -624,6 +627,7 @@ class Float(MCFVariable):
         back = int(back)
         front = front.split('.')
         front = int(front[0] + front[1])
+        if f < 0.0: size -= 1
         return (front, back, size)
 
     def assign(self, value: FloatConvertible | Integer) -> Float:
@@ -683,6 +687,14 @@ class Float(MCFVariable):
         )
         ScoreBoard.to_storage(
             f"mem.{self._mcf_id}.v", MCF.BUFFER2, MCF.sb_sys, 1.0, 'byte'
+        )
+
+    def extract(self, dist: str, _type: FloatingPointVariableTypes = 'float') -> None:
+        self.move("register")
+        Data.storage(MCF.storage).modify_set("call.m0").value(f'"{_type}"')
+        Function(MCF.builtinSign(f'math.float.extract.run')).call()
+        Data.storage(MCF.storage).modify_set(dist).via(
+            Data.storage(MCF.storage), "register"
         )
 
     def duplicate(
@@ -829,6 +841,91 @@ class Float(MCFVariable):
         except MCFTypeError:
             return NotImplemented
         return self
+
+
+    def _compare(self, other: FloatConvertible, _type: str) -> Condition:
+        result = Condition(False, False)
+        other = Float._type_reduction(other)
+        self.move("cache.left")
+        other.move("cache.right")
+        Function(MCF.builtinSign('math.float.compare.run')).call()
+        if _type == '>':
+            Execute().condition('if').score_matches(
+                MCF.GENERAL, MCF.sb_sys, 1, 1
+            ).run(
+                ScoreBoard.players_set(result._mcf_id, MCF.sb_general, 1)
+            )
+        elif _type == '>=':
+            Execute().condition('if').score_matches(
+                MCF.GENERAL, MCF.sb_sys, 0, None
+            ).run(
+                ScoreBoard.players_set(result._mcf_id, MCF.sb_general, 1)
+            )
+        elif _type == '=':
+            Execute().condition('if').score_matches(
+                MCF.GENERAL, MCF.sb_sys, 0, 0
+            ).run(
+                ScoreBoard.players_set(result._mcf_id, MCF.sb_general, 1)
+            )
+        elif _type == '<':
+            Execute().condition('if').score_matches(
+                MCF.GENERAL, MCF.sb_sys, -1, -1
+            ).run(
+                ScoreBoard.players_set(result._mcf_id, MCF.sb_general, 1)
+            )
+        elif _type == '<=':
+            Execute().condition('if').score_matches(
+                MCF.GENERAL, MCF.sb_sys, None, 0
+            ).run(
+                ScoreBoard.players_set(result._mcf_id, MCF.sb_general, 1)
+            )
+        elif _type == '!=':
+            Execute().condition('unless').score_matches(
+                MCF.GENERAL, MCF.sb_sys, 0, 0
+            ).run(
+                ScoreBoard.players_set(result._mcf_id, MCF.sb_general, 1)
+            )
+        else:
+            raise MCFTypeError(
+                "Unsupported comparison type '{}' for Float.", _type
+            )
+        return result
+        
+    def __eq__(self, value: FloatConvertible) -> Condition:
+        try:
+            return self._compare(value, '=')
+        except MCFTypeError:
+            return NotImplemented
+    
+    def __ne__(self, value: FloatConvertible) -> Condition:
+        try:
+            return self._compare(value, '!=')
+        except MCFTypeError:
+            return NotImplemented
+    
+    def __lt__(self, value: FloatConvertible) -> Condition:
+        try:
+            return self._compare(value, '<')
+        except MCFTypeError:
+            return NotImplemented
+    
+    def __gt__(self, value: FloatConvertible) -> Condition:
+        try:
+            return self._compare(value, '>')
+        except MCFTypeError:
+            return NotImplemented
+
+    def __ge__(self, value: FloatConvertible) -> Condition:
+        try:
+            return self._compare(value, '>=')
+        except MCFTypeError:
+            return NotImplemented
+    
+    def __le__(self, value: FloatConvertible) -> Condition:
+        try:
+            return self._compare(value, '<=')
+        except MCFTypeError:
+            return NotImplemented
 
     def rm(self):
         Data.storage(MCF.storage).remove(f"mem.{self._mcf_id}")

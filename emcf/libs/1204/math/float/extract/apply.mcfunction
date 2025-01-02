@@ -1,0 +1,1 @@
+$execute store result storage __st__ register $(m0) $(m1) run scoreboard players get __buf1__ __bd__

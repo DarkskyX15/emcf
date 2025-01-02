@@ -1,0 +1,6 @@
+{
+    "namespace":"math_float_ext",
+    "description": "float extraction component, infrastructure for float data type",
+    "credits": "written by Darksky",
+    "version": "r1.0.0"
+}

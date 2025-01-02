@@ -57,6 +57,7 @@ class MCFunction:
     _final_export: bool
     _context: dict[str, Any]
     _context_stack: list[dict[str, Any]]
+    _init_helper: list[Callable]
 
     sb_general: str
     sb_sys: str
@@ -90,6 +91,7 @@ class MCFunction:
         self._final_export = False
         self._context = {}
         self._context_stack = []
+        self._init_helper = []
         self._io_redirect = None
         self.do_gc = True
         self.stop_gc = False
@@ -97,6 +99,9 @@ class MCFunction:
     def __del__(self):
         if not self._final_export:
             self.exportComponents()
+
+    def initializeHelper(self, target: Callable) -> None:
+        self._init_helper.append(target)
 
     def useConfig(self, cfg_map: ConfigMap) -> None:
         # config query
@@ -157,7 +162,8 @@ scoreboard players set {MCF.BUFFER6} {self.sb_sys} 0
 """
             )
         self._io_history.append(f"{self.wk_root}/main.mcfunction")
-        self._builtin_cps.initialize()
+        for call in self._init_helper:
+            call()
 
     def getFID(self) -> str:
         return self._fool_id_generator.get()

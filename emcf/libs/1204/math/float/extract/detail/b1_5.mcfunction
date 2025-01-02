@@ -1,0 +1,5 @@
+execute if score __buf2__ __bd__ matches 1 run return run data modify storage test:emcf call.m1 set value "10"
+execute if score __buf2__ __bd__ matches 2 run return run data modify storage test:emcf call.m1 set value "100"
+execute if score __buf2__ __bd__ matches 3 run return run data modify storage test:emcf call.m1 set value "1000"
+execute if score __buf2__ __bd__ matches 4 run return run data modify storage test:emcf call.m1 set value "10000"
+execute if score __buf2__ __bd__ matches 5 run return run data modify storage test:emcf call.m1 set value "100000"

@@ -35,5 +35,26 @@ class BuiltinComponents:
             "st": MCF.storage
         }
 
+        self.float_extract = {
+            "buf1": MCF.BUFFER1,
+            "buf2": MCF.BUFFER2,
+            "buf3": MCF.BUFFER3,
+            "bd": MCF.sb_sys,
+            "st": MCF.storage
+        }
+
+        self.float_compare = {
+            "cst": MCF.CALC_CONST,
+            "buf1": MCF.BUFFER1,
+            "buf2": MCF.BUFFER2,
+            "buf3": MCF.BUFFER3,
+            "buf4": MCF.BUFFER4,
+            "buf5": MCF.BUFFER5,
+            "buf6": MCF.BUFFER6,
+            "gen": MCF.GENERAL,
+            "bd": MCF.sb_sys,
+            "st": MCF.storage
+        }
+
 builtin_components = BuiltinComponents()
-MCF._builtin_cps = builtin_components
+MCF.initializeHelper(builtin_components.initialize)
