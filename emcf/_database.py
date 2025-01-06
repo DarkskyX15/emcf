@@ -1,5 +1,5 @@
 
-from ._utils import getMultiPaths
+from ._utils import getMultiPaths, console
 from ._exceptions import MCFComponentError
 from typing import Callable
 import json, os, sys
@@ -65,8 +65,10 @@ class MCFDataBase:
             with open(config_path, 'r', encoding='utf-8') as rd:
                 config = json.loads(rd.read())
             if not isinstance(config, dict):
-                raise MCFComponentError(
-                    f"Invalid format for component.json in component '{component}'"
+                console.error(
+                    MCFComponentError(
+                        f"Invalid format for component.json in component '{component}'"
+                    )
                 )
             namespace = config.get('namespace', 'local')
             requires_map[component] = config.get('requires', [])

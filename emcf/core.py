@@ -1,15 +1,15 @@
 
 from ._database import *
 from ._exceptions import MCFComponentError
-from ._utils import getMultiPaths
+from ._utils import getMultiPaths, console
 from typing import TypeAlias, Any, Literal, TextIO, Callable, Protocol, TypeVarTuple
-import os, random
+import os, random, atexit
 
-EMCF = "a0.1.1"
+EMCF = "a0.1.2"
 
 GCSign: TypeAlias = Literal['shadow', 'norm', 'none']
 ConfigMap: TypeAlias = dict[Literal[
-    "namespace", "version", "dist", "prefix", "gc"
+    "namespace", "version", "dist", "prefix", "gc", "log"
 ], Any]
 
 MCFVersion: TypeAlias = Literal[1204, 1211]
@@ -55,6 +55,7 @@ class MCFunction:
     _io_redirect: Any | None
     _component_reg: dict[str, str]
     _final_export: bool
+    _tidied_up: bool
     _context: dict[str, Any]
     _context_stack: list[dict[str, Any]]
     _init_helper: list[Callable]
@@ -76,6 +77,7 @@ class MCFunction:
     CALC_CONST = "reg2"
     COND_LAST = "reg3"
     TERMINATE = "reg4"
+    LOOP_EXIT = "re11"
 
     def __init__(self):
         self._operation_stack = []
@@ -89,21 +91,34 @@ class MCFunction:
         self._io_ptr = None
         self._component_reg = dict()
         self._final_export = False
+        self._tidied_up = False
         self._context = {}
         self._context_stack = []
         self._init_helper = []
         self._io_redirect = None
         self.do_gc = True
         self.stop_gc = False
+        atexit.register(self._deconstruct)
+        console.info(f'EMCF initialized, version: {EMCF}')
 
     def __del__(self):
+        pass
+
+    def _deconstruct(self):
+        if not self._tidied_up:
+            self.tidyUp()
+
+    def tidyUp(self) -> None:
+        self._tidied_up = True
         if not self._final_export:
             self.exportComponents()
+        console.summarize()
 
     def initializeHelper(self, target: Callable) -> None:
         self._init_helper.append(target)
 
     def useConfig(self, cfg_map: ConfigMap) -> None:
+        console.info('Using configuration:', cfg_map)
         # config query
         self._namespace = cfg_map.get("namespace", self._namespace)
         self._mcf_version = cfg_map.get("version", self._mcf_version)
@@ -112,6 +127,7 @@ class MCFunction:
         self.do_gc = cfg_map.get("gc", self.do_gc)
         self._component_reg.clear()
         self._final_export = False
+        self._tidied_up = False
         self._io_redirect = None
         self._context.clear()
         self._context_stack.clear()
@@ -159,9 +175,11 @@ scoreboard players set {MCF.BUFFER3} {self.sb_sys} 0
 scoreboard players set {MCF.BUFFER4} {self.sb_sys} 0
 scoreboard players set {MCF.BUFFER5} {self.sb_sys} 0
 scoreboard players set {MCF.BUFFER6} {self.sb_sys} 0
+scoreboard players set {MCF.LOOP_EXIT} {self.sb_sys} 0
 """
             )
         self._io_history.append(f"{self.wk_root}/main.mcfunction")
+        console.info("Compiling functions...")
         for call in self._init_helper:
             call()
 
@@ -180,17 +198,21 @@ scoreboard players set {MCF.BUFFER6} {self.sb_sys} 0
 
     def useComponent(self, cp_id: str, macros: dict[str, str]) -> None:
         if not self.database.pushComponent(cp_id, macros):
-            raise MCFComponentError(
-                f"Can not find component '{cp_id}'."
+            console.error(
+                MCFComponentError(
+                    f"Can not find component '{cp_id}'."
+                )
             )
 
     def builtinSign(self, func_id: str) -> str:
         check = self._component_reg.get(func_id, None)
         if check is not None: return check
         if not self.database.validateSign(func_id):
-            raise MCFComponentError(
-                f"Can not find component function '{func_id}', " + 
-                "maybe it's not exported or does not exist."
+            console.error(
+                MCFComponentError(
+                    f"Can not find component function '{func_id}', " + 
+                    "maybe it's not exported or does not exist."
+                )
             )
         signature = f"{self._namespace}:emcf/{self._fool_id_generator.get()}"
         self._component_reg[func_id] = signature
@@ -210,6 +232,7 @@ scoreboard players set {MCF.BUFFER6} {self.sb_sys} 0
 
     def exportComponents(self) -> None:
         self._final_export = True
+        console.info("Exporting used components...")
         self.database.writeComponents(self._merge_signatures)
 
     def write(self, command_lines: str, macro: bool) -> None:

@@ -3,6 +3,7 @@ from .core import MCF
 from ._exceptions import MCFTypeError
 from .types import MCFVariable, FakeNone
 from ._writers import *
+from ._utils import console
 from typing import Callable, TypeVar, TypeVarTuple, Generic, TextIO, Type
 from functools import wraps
 
@@ -39,12 +40,15 @@ class MCFunction(Generic[Ret]):
                 collected.append(new)
                 index += 1
             else:
-                raise MCFTypeError(
-                    "Parameter '{}' can not be passed to a MCFunction.", arg
+                console.error(
+                    MCFTypeError(
+                        "Parameter '{}' can not be passed to a MCFunction.", arg
+                    )
                 )
+                return args
         return tuple(collected)
 
-    def _export_params(self, args: tuple[object]) -> None:
+    def _export_params(self, args: tuple[object]) -> bool:
         index = 0
         for arg in args:
             if isinstance(arg, MCFVariable):
@@ -55,9 +59,13 @@ class MCFunction(Generic[Ret]):
                 )
                 index += 1
             else:
-                raise MCFTypeError(
-                    "Parameter '{}' can not be passed to a MCFunction.", arg
+                console.error(
+                    MCFTypeError(
+                        "Parameter '{}' can not be passed to a MCFunction.", arg
+                    )
                 )
+                return False
+        return True
 
     def _push_stack(self) -> None:
         index = 0
@@ -110,8 +118,16 @@ class MCFunction(Generic[Ret]):
 
             self._push_stack()              # 将当前上下文压入栈中
 
-            self._export_params(args)       # 将参数导出到存储中
-            if not self._exported:          # 如果函数未导出，则导出函数
+            valid = self._export_params(args)       # 将参数导出到存储中
+            if not valid:
+                console.error(
+                    MCFTypeError(
+                        "Failed to call function '{}' for it can not be converted to a MCFunction.",
+                        func.__name__
+                    )
+                )
+
+            if not self._exported and valid:        # 如果函数未导出，则导出函数
                 self._exported = True
                 MCF.forward(self._entry_path)
                 collected = self._collect_params(args)      # 收集参数
@@ -157,9 +173,11 @@ def Return(ret_value: MCFVariable = FakeNone()) -> None:
         ScoreBoard.players_set(MCF.TERMINATE, MCF.sb_sys, 1)
         ret_value.move("ret_val")
     else:
-        raise MCFTypeError(
-            "Type {} can not be returned by a MCFunction.",
-            type(ret_value)
+        console.error(
+            MCFTypeError(
+                "Type {} can not be returned by a MCFunction.",
+                type(ret_value)
+            )
         )
     if MCF.do_gc:
         for shadow in MCF._context.values():

@@ -3,6 +3,7 @@ MCF所有基础变量的封装
 """
 
 from .core import MCF, GCSign
+from ._utils import console
 from ._exceptions import *
 from ._writers import *
 from ._components import builtin_components as built_cps
@@ -137,9 +138,11 @@ class Condition(MCFVariable):
                 '=', value._mcf_id, MCF.sb_general
             )
         else:
-            raise MCFTypeError(
-                "Can not use {} as value for Condition.",
-                value
+            console.error(
+                MCFTypeError(
+                    "Can not use {} as value for Condition.",
+                    value
+                )
             )
 
     @staticmethod
@@ -273,9 +276,11 @@ class Integer(MCFVariable):
                 value._mcf_id, MCF.sb_general
             )
         else:
-            raise MCFTypeError(
-                "Can not use {} as value for Integer.",
-                value
+            console.error(
+                MCFTypeError(
+                    "Can not use {} as value for Integer.",
+                    value
+                )
             )
         return self
 
@@ -657,9 +662,11 @@ class Float(MCFVariable):
                 f"mem.{self._mcf_id}.v", MCF.BUFFER2, MCF.sb_sys, 1.0, 'byte'
             )
         else:
-            raise MCFTypeError(
-                "Can not use {} as value for Float.",
-                value
+            console.error(
+                MCFTypeError(
+                    "Can not use {} as value for Float.",
+                    value
+                )
             )
         return self
     
@@ -704,6 +711,15 @@ class Float(MCFVariable):
     ) -> Float:
         return Float(init_val, void)
     
+    @staticmethod
+    def macro_construct(slot: str, mcf_id: str) -> Float:
+        temp = Float(None, True)
+        temp._mcf_id = mcf_id
+        Data.storage(MCF.storage).modify_set(f"mem.{mcf_id}", True).via(
+            Data.storage(MCF.storage), f"mem.$({slot})"
+        )
+        return temp
+
     @staticmethod
     def _type_reduction(other: FloatConvertible) -> Float:
         reduced = float(other) if isinstance(other, int) else other

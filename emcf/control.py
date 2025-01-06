@@ -1,13 +1,15 @@
 
 from .core import MCF
+from ._utils import console
+from ._exceptions import MCFTypeError
 from .types import Condition
 from ._writers import *
 from typing import TextIO, Self, Callable
 
 __all__ = [
-    'Mif',
-    'Melif',
-    'Melse',
+    'If',
+    'Elif',
+    'Else',
 ]
 
 class ConditionControl:
@@ -25,7 +27,15 @@ class ConditionControl:
         if self._condition is None:
             self._enter(self._func_sig)
         else:
-            self._enter(self._condition._mcf_id, self._func_sig)
+            if not isinstance(self._condition, Condition):
+                console.error(
+                    MCFTypeError(
+                        "Can not use {} as a condition.",
+                        self._condition
+                    )
+                )
+            else:
+                self._enter(self._condition._mcf_id, self._func_sig)
         MCF.forward(self._func_path)
         return self
     
@@ -91,7 +101,7 @@ class ConditionControl:
         )
 
     @staticmethod
-    def _write_else(io: TextIO, sig: str) -> None:
+    def _write_else(sig: str) -> None:
         ScoreBoard.players_set(MCF.GENERAL, MCF.sb_sys, 0)
         Execute().condition('if').score_matches(
             MCF.COND_LAST, MCF.sb_sys, 0, 0
@@ -112,20 +122,39 @@ class ConditionControl:
             Function(sig).call()
         )
 
-class Mif(ConditionControl):
+class If(ConditionControl):
     def __init__(self, condition: Condition):
         super().__init__(
             ConditionControl._write_if, condition
         )
 
-class Melif(ConditionControl):
+class Elif(ConditionControl):
     def __init__(self, condition: Condition):
         super().__init__(
             ConditionControl._write_elif, condition
         )
 
-class Melse(ConditionControl):
+class Else(ConditionControl):
     def __init__(self):
         super().__init__(
             ConditionControl._write_else, None
         )
+
+class While:
+    _used: bool
+
+    def __init__(self):
+        self._used = False
+
+    def use(self, condition: Condition) -> Self:
+        self._used = True
+        return self
+    
+    def __enter__(self) -> Self:
+        pass
+
+    def __exit__(self, type, value, traceback) -> None:
+        pass
+
+class Range:
+    pass

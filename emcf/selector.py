@@ -1,5 +1,6 @@
 
 from .core import MCF
+from ._utils import console
 from ._writers import *
 from ._exceptions import MCFVersionError, MCFValueError
 from typing import TextIO, Self
@@ -22,8 +23,10 @@ class Selector:
         self._built = ''
         self._with_limit = False
         if target not in MCF.database.selectors:
-            raise MCFVersionError(
-                f"Selector {target} is not supported", MCF._mcf_version
+            console.error(
+                MCFVersionError(
+                    f"Selector {target} is not supported", MCF._mcf_version
+                )
             )
         self._built += target
 
@@ -37,6 +40,8 @@ class Selector:
 
     def select(self) -> str:
         if not self._in_context:
-            raise MCFValueError("select() called without a selector context.")
+            console.error(
+                MCFValueError("select() called without a selector context.")
+            )
         return f"{self._target}[tag={self._tag}]"
     
