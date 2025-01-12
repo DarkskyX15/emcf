@@ -48,7 +48,7 @@ class LogOutput:
     def error(self, err: Exception):
 
         def _cut_str(msg: str) -> str:
-            if len(msg) >= 60: return '...' + msg[len(msg) - 57:]
+            if len(msg) >= 40: return '...' + msg[len(msg) - 37:]
             return msg
 
         if not self._err_override: raise err
@@ -65,15 +65,15 @@ class LogOutput:
                     fnt = '┃' if idx != 0 else '┗'
                     if not topped:
                         print(f'\t\x1b[31m┣━ {os.path.split(file)[1]} [top level]')
-                        print(f'\t┃  File {file} in {func}')
-                        print(f'\t┃\t{line}| {name}\n\t{fnt}')
+                        print(f'\t\x1b[31m┃\x1b[0m  File {file} in {func}')
+                        print(f'\t\x1b[31m┃\x1b[0m\t{line}| {name}\n\t\x1b[31m{fnt}\x1b[0m')
                         topped = True
                     else:
                         print(f'\t\x1b[33m┣━ {os.path.split(file)[1]}')
-                        print(f'\t┃  File {file} in {func}')
-                        print(f'\t┃\t{line}| {name}\n\t{fnt}')
+                        print(f'\t\x1b[33m┃\x1b[0m  File {file} in {func}')
+                        print(f'\t\x1b[33m┃\x1b[0m\t{line}| {name}\n\t\x1b[33m{fnt}\x1b[0m')
                 else:
-                    print(f'\t\x1b[0m┇ [other files] {_cut_str(file)}')
+                    print(f'\t\x1b[0m┇ [other files] {_cut_str(file)} in {func}, line {line}')
             else:
                 print(f'\t┃ {file.removeprefix(self._module_dir)} in {func}, line {line} [EMCF]')
         print(_RESET, end='')

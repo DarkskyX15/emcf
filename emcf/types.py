@@ -10,6 +10,15 @@ from ._components import builtin_components as built_cps
 from typing import TypeAlias, NewType, Any, Union, TextIO, Self, Literal
 
 
+__all__ = [
+    'MCFVariable',
+    'FakeNone',
+    'Condition',
+    'Integer',
+    'Float',
+]
+
+
 class MCFVariable:
     """MCF变量的基类
 
@@ -113,8 +122,16 @@ class FakeNone(MCFVariable):
         pass
 
 
+Float = NewType("Float", MCFVariable)
+FloatConvertible: TypeAlias = Float | float | int
+
 Condition = NewType("Condition", MCFVariable)
 ConditionConvertible: TypeAlias = Condition | bool
+
+Integer = NewType("Integer", MCFVariable)
+IntegerConvertible: TypeAlias = Integer | int
+
+
 class Condition(MCFVariable):
     """布尔值类型"""
     def __init__(
@@ -256,24 +273,27 @@ class Condition(MCFVariable):
         ScoreBoard.players_reset(self._mcf_id, MCF.sb_general)
 
 
-Integer = NewType("Integer", MCFVariable)
-IntegerConvertible: TypeAlias = Integer | int
 class Integer(MCFVariable):
 
     def __init__(
         self,
-        init_val: IntegerConvertible | None = 0,
+        init_val: IntegerConvertible | Float | None = 0,
         void: bool = False
     ):
         super().__init__(init_val, void)
 
-    def assign(self, value: IntegerConvertible) -> Integer:
+    def assign(self, value: IntegerConvertible | Float) -> Integer:
         if isinstance(value, int):
             ScoreBoard.players_set(self._mcf_id, MCF.sb_general, value)
         elif isinstance(value, Integer):
             ScoreBoard.players_operation(
                 self._mcf_id, MCF.sb_general, "=",
                 value._mcf_id, MCF.sb_general
+            )
+        elif isinstance(value, Float):
+            value.extract("register")
+            ScoreBoard.from_storage(
+                "register", self._mcf_id, MCF.sb_general, 1.0
             )
         else:
             console.error(
@@ -605,8 +625,6 @@ class Integer(MCFVariable):
             return NotImplemented
 
 
-Float = NewType("Float", MCFVariable)
-FloatConvertible: TypeAlias = Float | float | int
 class Float(MCFVariable):
     def __init__(
         self,

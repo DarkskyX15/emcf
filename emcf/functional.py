@@ -72,6 +72,7 @@ class MCFunction(Generic[Ret]):
         for var in MCF._context.values():
             var.move(f"frame.m{index}")
             index += 1
+        # 保存栈帧
         Data.storage(MCF.storage).modify_set("frame.cond_stack").via(
             Data.storage(MCF.storage), "cond_stack"
         )
@@ -79,6 +80,9 @@ class MCFunction(Generic[Ret]):
             MCF.storage, "frame.terminate", 'byte', 1.0
         ).run(
             ScoreBoard.players_get(MCF.TERMINATE, MCF.sb_sys)
+        )
+        Data.storage(MCF.storage).modify_set("frame.loop_stack").via(
+            Data.storage(MCF.storage), "loop_stack"
         )
         Data.storage(MCF.storage).modify_append("stack").via(
             Data.storage(MCF.storage), "frame"
@@ -89,7 +93,9 @@ class MCFunction(Generic[Ret]):
 
     def _new_stack(self) -> None:
         MCF._context.update(self._context)
+        # 于此添加更多的栈帧默认值
         Data.storage(MCF.storage).modify_set("cond_stack").value("[]")
+        Data.storage(MCF.storage).modify_set("loop_stack").value("[]")
         ScoreBoard.players_set(MCF.TERMINATE, MCF.sb_sys, 0)
 
     def _pop_stack(self) -> None:
@@ -98,11 +104,15 @@ class MCFunction(Generic[Ret]):
             Data.storage(MCF.storage), "stack[-1]"
         )
         Data.storage(MCF.storage).remove("stack[-1]")
+        # 恢复更多信号寄存器
         Data.storage(MCF.storage).modify_set("cond_stack").via(
             Data.storage(MCF.storage), "frame.cond_stack"
         )
         Execute().store('result').score(MCF.TERMINATE, MCF.sb_sys).run(
             Data.storage(MCF.storage).get("frame.terminate", 1.0)
+        )
+        Data.storage(MCF.storage).modify_set("loop_stack").via(
+            Data.storage(MCF.storage), "frame.loop_stack"
         )
         index = 0
         for var in MCF._context.values():

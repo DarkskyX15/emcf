@@ -36,3 +36,11 @@ class MCFComponentError(MCFException):
         self.message = msg
     def __str__(self):
         return self.message
+
+class MCFSyntaxError(MCFException):
+    message: str
+    def __init__(self, msg: str):
+        super().__init__(msg)
+        self.message = msg
+    def __str__(self):
+        return self.message

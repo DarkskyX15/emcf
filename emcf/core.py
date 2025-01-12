@@ -5,12 +5,15 @@ from ._utils import getMultiPaths, console
 from typing import TypeAlias, Any, Literal, TextIO, Callable, Protocol, TypeVarTuple
 import os, random, atexit
 
-EMCF = "a0.1.2"
+EMCF = "a0.1.3"
 
 GCSign: TypeAlias = Literal['shadow', 'norm', 'none']
 ConfigMap: TypeAlias = dict[Literal[
     "namespace", "version", "dist", "prefix", "gc", "log"
 ], Any]
+ContextType: TypeAlias = Literal[
+    'norm', 'loop', 'if', 'elif', 'else'
+]
 
 MCFVersion: TypeAlias = Literal[1204, 1211]
 
@@ -41,7 +44,7 @@ class FoolID:
                     self._present[i - 1] += 1
         return fid
 
-class MCFunction:
+class MCFCore:
     _namespace: str
     _mcf_version: MCFVersion
     _dist: str
@@ -58,6 +61,8 @@ class MCFunction:
     _tidied_up: bool
     _context: dict[str, Any]
     _context_stack: list[dict[str, Any]]
+    _context_type: list[ContextType]
+    _last_ctx_type: ContextType
     _init_helper: list[Callable]
 
     sb_general: str
@@ -78,6 +83,7 @@ class MCFunction:
     COND_LAST = "reg3"
     TERMINATE = "reg4"
     LOOP_EXIT = "re11"
+    LOOP_CONT = "re12"
 
     def __init__(self):
         self._operation_stack = []
@@ -94,6 +100,8 @@ class MCFunction:
         self._tidied_up = False
         self._context = {}
         self._context_stack = []
+        self._context_type = ['norm']
+        self._last_ctx_type = 'norm'
         self._init_helper = []
         self._io_redirect = None
         self.do_gc = True
@@ -131,6 +139,8 @@ class MCFunction:
         self._io_redirect = None
         self._context.clear()
         self._context_stack.clear()
+        self._context_type = ['norm']
+        self._last_ctx_type = 'norm'
 
         # name defines
         self.sb_general = f"emcf_{self._namespace}"
@@ -162,6 +172,7 @@ data modify storage {self.storage} frame set value """ + r"{}" + f"""
 data modify storage {self.storage} stack set value []
 data modify storage {self.storage} ret_val set value ""
 data modify storage {self.storage} cond_stack set value []
+data modify storage {self.storage} loop_stack set value []
 data modify storage {self.storage} register set value ""
 data modify storage {self.storage} cache set value """ + r"{}" + f"""
 data modify storage {self.storage} mem set value """ + r"{}" + f"""
@@ -176,12 +187,12 @@ scoreboard players set {MCF.BUFFER4} {self.sb_sys} 0
 scoreboard players set {MCF.BUFFER5} {self.sb_sys} 0
 scoreboard players set {MCF.BUFFER6} {self.sb_sys} 0
 scoreboard players set {MCF.LOOP_EXIT} {self.sb_sys} 0
+scoreboard players set {MCF.LOOP_CONT} {self.sb_sys} 0
 """
             )
         self._io_history.append(f"{self.wk_root}/main.mcfunction")
         console.info("Compiling functions...")
-        for call in self._init_helper:
-            call()
+        for call in self._init_helper: call()
 
     def getFID(self) -> str:
         return self._fool_id_generator.get()
@@ -265,4 +276,4 @@ scoreboard players set {MCF.LOOP_EXIT} {self.sb_sys} 0
     def removeContext(self, variable: Any) -> None:
         self._context.pop(variable._mcf_id)
 
-MCF = MCFunction()
+MCF = MCFCore()

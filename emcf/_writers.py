@@ -36,6 +36,14 @@ class _Collector:
         self._buffer = s
         return 1
 
+class _MultiCollector:
+    _buffer_list: list[str]
+    def __init__(self):
+        self._buffer_list = []
+    def write(self, s: str) -> int:
+        self._buffer_list.append(s)
+
+
 Execute = NewType("Execute", None)
 
 _ExecuteStoreContext = NewType("_ExecuteStoreContext", None)
