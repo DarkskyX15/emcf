@@ -1,13 +1,45 @@
 
 from .core import MCF
-from ._exceptions import MCFTypeError
-from .types import MCFVariable, FakeNone
+from ._exceptions import MCFTypeError, MCFSyntaxError
+from .types import *
 from ._writers import *
+from ._writers import _MultiCollector
 from ._utils import console
-from typing import Callable, TypeVar, TypeVarTuple, Generic, TextIO, Type
+from typing import (
+    Callable, TypeVar, TypeVarTuple, Generic,
+    Type, Any, get_origin, TypeAlias, Annotated
+)
 from functools import wraps
 
-Ret = TypeVar('Ret')
+__all__ = [
+    'Ref',
+    'ConditionRef',
+    'IntegerRef',
+    'FloatRef',
+    'MCFunction',
+    'Return'
+]
+
+class Ref:
+    _wrapped: Any
+    def __init__(self, value: Any):
+        super().__init__()
+        if not isinstance(value, MCFVariable):
+            console.error(
+                MCFTypeError(
+                    "Can not use Ref on type: {}",
+                    type(value)
+                )
+            )
+        self._wrapped = value
+
+ConditionRef: TypeAlias = Annotated[Condition, Ref]
+IntegerRef: TypeAlias = Annotated[Integer, Ref]
+FloatRef: TypeAlias = Annotated[Float, Ref]
+
+# default argument value is not supported at present
+
+Ret = TypeVar('ReturnValue')
 Args = TypeVarTuple('Args')
 class MCFunction(Generic[Ret]):
     _entry_path: str
@@ -19,6 +51,8 @@ class MCFunction(Generic[Ret]):
     _ret_type: Type[Ret]
     _input_addr: list[str]
     _context: dict[str, MCFVariable]
+    _ref_args: dict[str, MCFVariable]
+    _collected: list[MCFVariable]
 
     def __init__(self, ret_type: Type[Ret] = FakeNone):
         self._entry_path, self._entry_sig = MCF.makeFunction()
@@ -28,12 +62,22 @@ class MCFunction(Generic[Ret]):
         self._ret_type = ret_type
         self._input_addr = []
         self._context = {}
+        self._ref_args = {}
+        self._collected = []
 
     def _collect_params(self, args: tuple[object]) -> tuple[MCFVariable]:
         collected = []
         index = 0
         for arg in args:
-            if isinstance(arg, MCFVariable):
+            if isinstance(arg, Ref):
+                arg: MCFVariable = arg._wrapped
+                new: MCFVariable = arg.macro_construct(
+                    f"m{index}", self._input_addr[index]
+                )
+                collected.append(new)
+                index += 1
+                self._ref_args[new._mcf_id] = arg
+            elif isinstance(arg, MCFVariable):
                 new: MCFVariable = arg.macro_construct(
                     f"m{index}", self._input_addr[index]
                 )
@@ -51,6 +95,8 @@ class MCFunction(Generic[Ret]):
     def _export_params(self, args: tuple[object]) -> bool:
         index = 0
         for arg in args:
+            if isinstance(arg, Ref):
+                arg = arg._wrapped
             if isinstance(arg, MCFVariable):
                 Data.storage(MCF.storage).modify_set(
                     f"call.m{index}"
@@ -120,15 +166,80 @@ class MCFunction(Generic[Ret]):
             index += 1
 
     def __call__(self, func: Callable[[*Args], None]) -> Callable[[*Args], Ret]:
+
+        def early_exit():
+            if self._ret_type is FakeNone:
+                return None
+            result = self._ret_type(None, False)
+            MCF.addContext(result)
+            return result
+
         @wraps(func)
         def wrapper(*args: *Args) -> Ret:
+            # type check
+            check_pass = True
+            size_args = len(args)
+            size_need = len(func.__annotations__)
+            if size_args != size_need:
+                console.error(
+                    MCFSyntaxError(
+                        f"Function {func.__name__} needs {size_need} arguments, "
+                        f"while {size_args} is provided."
+                    )
+                )
+                return early_exit()
+            
+            index = 0
+            for name, tp in func.__annotations__.items():
+                checking = args[index]
+                if type(tp) is not type:
+                    if (
+                        get_origin(tp) is not Annotated
+                        or tp.__metadata__[0] is not Ref
+                    ):
+                        console.error(
+                            MCFTypeError(
+                                "Invalid type annotation given: {}",
+                                tp
+                            )
+                        )
+                        check_pass = False
+                        continue
+                    tp = tp.__origin__
+                    if not isinstance(checking, Ref):
+                        console.error(
+                            MCFTypeError(
+                                f"Argument at position {index + 1} require a Ref"
+                                " variable, while a variable of type {} is given.",
+                                type(checking)
+                            )
+                        )
+                        check_pass = False
+                        continue
+                    checking = checking._wrapped
+                    
+                if not isinstance(checking, tp):
+                    console.error(
+                        MCFTypeError(
+                            f"Given argument {name} at position {index + 1} "
+                            "is not an instance of {}.", tp
+                        )
+                    )
+                    check_pass = False
+                index += 1
+            if not check_pass:
+                return early_exit()
+
+            # 为每个参数生成一个Fool ID
             if not self._exported:
                 for _ in range(len(args)):
-                    self._input_addr.append(MCF.getFID())       # 为每个参数生成一个Fool ID
+                    self._input_addr.append(MCF.getFID())
 
-            self._push_stack()              # 将当前上下文压入栈中
+            # 将当前上下文压入栈中
+            self._push_stack()
 
-            valid = self._export_params(args)       # 将参数导出到存储中
+            # 将参数导出到存储中
+            valid = self._export_params(args)
             if not valid:
                 console.error(
                     MCFTypeError(
@@ -137,27 +248,38 @@ class MCFunction(Generic[Ret]):
                     )
                 )
 
-            if not self._exported and valid:        # 如果函数未导出，则导出函数
+            # 如果函数未导出，则导出函数
+            if not self._exported and valid:
                 self._exported = True
                 MCF.forward(self._entry_path)
-                collected = self._collect_params(args)      # 收集参数
+                collected = self._collect_params(args)
+
+                # 储存为函数上下文
                 for var in collected:
                     var._gc_sign = 'shadow'
-                    self._context[var._mcf_id] = var       # 储存为函数上下文
-                self._new_stack()               # 更新当前上下文
+                    self._context[var._mcf_id] = var
+                
+                # 更新当前上下文
+                self._new_stack()
                 Function(self._body_sig).call()
 
                 MCF.forward(self._body_path)
-                func(*collected)                # 写函数内容
+                func(*collected)
                 MCF.rewind()
-                
-                if MCF.do_gc:
-                    for var in collected:       # 清理函数收集的参数
-                        var.rm()
+
+                # update collected & gc
+                for var in collected:
+                    src = self._ref_args.get(var._mcf_id, None)
+                    if src is not None:
+                        self._collected.append(var)
+                    else:
+                        if MCF.do_gc:
+                            var.rm()
 
                 MCF.rewind()
             else:
-                self._new_stack()       # 更新当前上下文
+                # 更新当前上下文
+                self._new_stack()
 
             Function(self._entry_sig).with_args(
                 Data.storage(MCF.storage), "call"
@@ -172,6 +294,13 @@ class MCFunction(Generic[Ret]):
                 self._pop_stack()           # 恢复上下文
                 MCF.addContext(ret_val)     # 将返回值添加至当前上下文
             
+            # update ref
+            for var in self._collected:
+                src = self._ref_args[var._mcf_id]
+                src.assign(var)
+                if MCF.do_gc:
+                    var.rm()
+
             return ret_val
         
         return wrapper

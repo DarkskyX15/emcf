@@ -5,7 +5,7 @@ from ._utils import getMultiPaths, console
 from typing import TypeAlias, Any, Literal, TextIO, Callable, Protocol, TypeVarTuple
 import os, random, atexit
 
-EMCF = "a0.1.3"
+EMCF = "a0.1.5"
 
 GCSign: TypeAlias = Literal['shadow', 'norm', 'none']
 ConfigMap: TypeAlias = dict[Literal[
