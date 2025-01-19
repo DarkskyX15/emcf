@@ -118,6 +118,27 @@ class MCFCore:
 
     def tidyUp(self) -> None:
         self._tidied_up = True
+
+        # write reset
+        path, _ = MCF.makeFunction("reset")
+        MCF.forward(path)
+        MCF.write(
+f"""scoreboard objectives remove {self.sb_general}
+scoreboard objectives remove {self.sb_sys}
+data remove storage {self.storage} ret_val
+data remove storage {self.storage} call
+data remove storage {self.storage} version
+data remove storage {self.storage} frame
+data remove storage {self.storage} stack
+data remove storage {self.storage} cond_stack
+data remove storage {self.storage} loop_stack
+data remove storage {self.storage} register
+data remove storage {self.storage} cache
+data remove storage {self.storage} mem
+"""
+        , macro=False)
+        MCF.rewind()
+
         if not self._final_export:
             self.exportComponents()
         console.summarize()
@@ -192,7 +213,7 @@ scoreboard players set {MCF.LOOP_CONT} {self.sb_sys} 0
             )
         self._io_history.append(f"{self.wk_root}/main.mcfunction")
         console.info("Compiling functions...")
-        for call in self._init_helper: call()
+        for call in self._init_helper: call(self)
 
     def getFID(self) -> str:
         return self._fool_id_generator.get()

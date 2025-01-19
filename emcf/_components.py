@@ -1,11 +1,11 @@
 
-from .core import MCF
+from .core import MCF, MCFCore
 
 class BuiltinComponents:
     def __init__(self):
         pass
 
-    def initialize(self) -> None:
+    def initialize(self, _core: MCFCore) -> None:
         self.math_pow10 = {
             "src": MCF.GENERAL,
             "dist": MCF.CALC_CONST,

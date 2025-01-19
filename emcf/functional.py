@@ -39,6 +39,57 @@ FloatRef: TypeAlias = Annotated[Float, Ref]
 
 # default argument value is not supported at present
 
+def push_stack() -> None:
+    index = 0
+    for var in MCF._context.values():
+        var.move(f"frame.m{index}")
+        index += 1
+    # 保存栈帧
+    Data.storage(MCF.storage).modify_set("frame.cond_stack").via(
+        Data.storage(MCF.storage), "cond_stack"
+    )
+    Execute().store('result').storage(
+        MCF.storage, "frame.terminate", 'byte', 1.0
+    ).run(
+        ScoreBoard.players_get(MCF.TERMINATE, MCF.sb_sys)
+    )
+    Data.storage(MCF.storage).modify_set("frame.loop_stack").via(
+        Data.storage(MCF.storage), "loop_stack"
+    )
+    Data.storage(MCF.storage).modify_append("stack").via(
+        Data.storage(MCF.storage), "frame"
+    )
+    Data.storage(MCF.storage).modify_set("frame").value(r"{}")
+    MCF._context_stack.append(MCF._context.copy())
+    MCF._context.clear()
+
+def new_stack() -> None:
+    # 于此添加更多的栈帧默认值
+    Data.storage(MCF.storage).modify_set("cond_stack").value("[]")
+    Data.storage(MCF.storage).modify_set("loop_stack").value("[]")
+    ScoreBoard.players_set(MCF.TERMINATE, MCF.sb_sys, 0)
+
+def pop_stack() -> None:
+    MCF._context = MCF._context_stack.pop()
+    Data.storage(MCF.storage).modify_set("frame").via(
+        Data.storage(MCF.storage), "stack[-1]"
+    )
+    Data.storage(MCF.storage).remove("stack[-1]")
+    # 恢复更多信号寄存器
+    Data.storage(MCF.storage).modify_set("cond_stack").via(
+        Data.storage(MCF.storage), "frame.cond_stack"
+    )
+    Execute().store('result').score(MCF.TERMINATE, MCF.sb_sys).run(
+        Data.storage(MCF.storage).get("frame.terminate", 1.0)
+    )
+    Data.storage(MCF.storage).modify_set("loop_stack").via(
+        Data.storage(MCF.storage), "frame.loop_stack"
+    )
+    index = 0
+    for var in MCF._context.values():
+        var.collect(f"frame.m{index}")
+        index += 1
+
 Ret = TypeVar('ReturnValue')
 Args = TypeVarTuple('Args')
 class MCFunction(Generic[Ret]):
@@ -114,63 +165,21 @@ class MCFunction(Generic[Ret]):
         return True
 
     def _push_stack(self) -> None:
-        index = 0
-        for var in MCF._context.values():
-            var.move(f"frame.m{index}")
-            index += 1
-        # 保存栈帧
-        Data.storage(MCF.storage).modify_set("frame.cond_stack").via(
-            Data.storage(MCF.storage), "cond_stack"
-        )
-        Execute().store('result').storage(
-            MCF.storage, "frame.terminate", 'byte', 1.0
-        ).run(
-            ScoreBoard.players_get(MCF.TERMINATE, MCF.sb_sys)
-        )
-        Data.storage(MCF.storage).modify_set("frame.loop_stack").via(
-            Data.storage(MCF.storage), "loop_stack"
-        )
-        Data.storage(MCF.storage).modify_append("stack").via(
-            Data.storage(MCF.storage), "frame"
-        )
-        Data.storage(MCF.storage).modify_set("frame").value(r"{}")
-        MCF._context_stack.append(MCF._context.copy())
-        MCF._context.clear()
+        push_stack()
 
     def _new_stack(self) -> None:
         MCF._context.update(self._context)
-        # 于此添加更多的栈帧默认值
-        Data.storage(MCF.storage).modify_set("cond_stack").value("[]")
-        Data.storage(MCF.storage).modify_set("loop_stack").value("[]")
-        ScoreBoard.players_set(MCF.TERMINATE, MCF.sb_sys, 0)
+        new_stack()
 
     def _pop_stack(self) -> None:
-        MCF._context = MCF._context_stack.pop()
-        Data.storage(MCF.storage).modify_set("frame").via(
-            Data.storage(MCF.storage), "stack[-1]"
-        )
-        Data.storage(MCF.storage).remove("stack[-1]")
-        # 恢复更多信号寄存器
-        Data.storage(MCF.storage).modify_set("cond_stack").via(
-            Data.storage(MCF.storage), "frame.cond_stack"
-        )
-        Execute().store('result').score(MCF.TERMINATE, MCF.sb_sys).run(
-            Data.storage(MCF.storage).get("frame.terminate", 1.0)
-        )
-        Data.storage(MCF.storage).modify_set("loop_stack").via(
-            Data.storage(MCF.storage), "frame.loop_stack"
-        )
-        index = 0
-        for var in MCF._context.values():
-            var.collect(f"frame.m{index}")
-            index += 1
+        pop_stack()
 
     def __call__(self, func: Callable[[*Args], None]) -> Callable[[*Args], Ret]:
 
         def early_exit():
             if self._ret_type is FakeNone:
                 return None
-            result = self._ret_type(None, False)
+            result = self._ret_type(init_val=None, void=False)
             MCF.addContext(result)
             return result
 
@@ -285,7 +294,7 @@ class MCFunction(Generic[Ret]):
                 Data.storage(MCF.storage), "call"
             )
 
-            ret_val = self._ret_type(None, False)
+            ret_val = self._ret_type(init_val=None, void=False)
             if isinstance(ret_val, FakeNone):
                 ret_val = None
                 self._pop_stack()       # 恢复上下文
@@ -303,6 +312,7 @@ class MCFunction(Generic[Ret]):
 
             return ret_val
         
+        wrapper.__mcfsignature__ = self._entry_sig
         return wrapper
 
 def Return(ret_value: MCFVariable = FakeNone()) -> None:
@@ -320,5 +330,6 @@ def Return(ret_value: MCFVariable = FakeNone()) -> None:
         )
     if MCF.do_gc:
         for shadow in MCF._context.values():
-            shadow.rm()
+            if shadow._meta == 'norm':
+                shadow.rm()
     ReturN().value(1)

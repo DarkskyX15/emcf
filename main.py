@@ -8,7 +8,7 @@ from emcf.types import *
 from emcf.control import *
 from emcf._writers import *
 from emcf.functional import *
-from typing import Annotated
+from emcf.classing import *
 
 
 MCF.useConfig({
@@ -17,17 +17,29 @@ MCF.useConfig({
     "gc": True
 })
 
-@MCFunction(FakeNone)
-def test(x: IntegerRef, size: Integer):
-    x += size
+class Fib(MCFClass):
+    a1: Integer
+    a2: Integer
+    def __init__(self, **kwargs):
+        super().__init__(
+            Fib, kwargs,
+            a1=Integer(1),
+            a2=Integer(1)
+        )
+        self.complete()
+    def step(self) -> FakeNone:
+        temp = self.a1 + self.a2
+        self.a1.assign(self.a2)
+        self.a2.assign(temp)
+    def get(self) -> Integer:
+        Return(self.a2)
 
 def main():
-    x = Integer(10)
-    say(x)
-    test(Ref(x), Integer(10))
-    say(x)
-    test(Ref(x), Integer(20))
-    say(x)
+    fib = Fib()
+    for _ in Range(29):
+        fib.step()
+        say(fib.get())
+    say(fib.get())
             
 if __name__ == '__main__':
     main()

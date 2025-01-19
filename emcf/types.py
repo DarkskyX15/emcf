@@ -26,6 +26,7 @@ class MCFVariable:
     """
     _mcf_id: str
     _gc_sign: GCSign
+    _meta: str
 
     def __init__(self, init_val: Any, void: bool):
         """初始化MCF变量
@@ -41,6 +42,7 @@ class MCFVariable:
         创建Fool ID，且不会被记录至当前的上下文。目前空值仅在上下文列表中使用，列表
         中空值的`_gc_sign`属性被设为`shadow`，防止重复析构的同时保留类型的操作。
         """
+        self._meta = 'norm'
         self._gc_sign = 'norm' if MCF.do_gc else 'none'
         if not void:
             self._mcf_id = MCF.getFID()
@@ -79,12 +81,7 @@ class MCFVariable:
         raise NotImplementedError
 
     @staticmethod
-    def macro_assign(slot: str, src: str):
-        """当前变量位于`slot`，从`src`向此处赋值"""
-        raise NotImplementedError
-
-    @staticmethod
-    def macro_construct(slot: str, mcf_id: str):
+    def macro_construct(slot: str, mcf_id: str) -> Self:
         """从`slot`指定的宏位置创建Fool ID为`mcf_id`的实例"""
         raise NotImplementedError
 
@@ -92,7 +89,7 @@ class MCFVariable:
     def duplicate(
         init_val: Any = None,
         void: bool = False
-    ):
+    ) -> Self:
         """产生与自身类型相同的对象"""
         raise NotImplementedError
 
@@ -164,13 +161,6 @@ class Condition(MCFVariable):
                     value
                 )
             )
-
-    @staticmethod
-    def macro_assign(slot: str, src: str) -> None:
-        ScoreBoard.players_operation(
-            f"$({slot})", MCF.sb_general, "=",
-            src, MCF.sb_general, macro=True
-        )
 
     @staticmethod
     def macro_construct(slot: str, mcf_id: str) -> Condition:
@@ -347,13 +337,6 @@ class Integer(MCFVariable):
             macro=True
         )
         return temp
-
-    @staticmethod
-    def macro_assign(slot: str, src: str) -> None:
-        ScoreBoard.players_operation(
-            f"$({slot})", MCF.sb_general, '=',
-            src, MCF.sb_general, macro=True
-        )
 
     @staticmethod
     def duplicate(
@@ -754,12 +737,6 @@ class Float(MCFVariable):
             Data.storage(MCF.storage), f"mem.$({slot})"
         )
         return temp
-
-    @staticmethod
-    def macro_assign(slot: str, src: str) -> None:
-        Data.storage(MCF.storage).modify_set(f"mem.$({slot})", macro=True).via(
-            Data.storage(MCF.storage), f"mem.{src}"
-        )
 
     @staticmethod
     def _type_reduction(other: FloatConvertible) -> Float:
