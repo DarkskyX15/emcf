@@ -9,6 +9,7 @@ from emcf.control import *
 from emcf._writers import *
 from emcf.functional import *
 from emcf.classing import *
+from gc import get_referrers
 
 
 MCF.useConfig({
@@ -17,29 +18,44 @@ MCF.useConfig({
     "gc": True
 })
 
+class Inner(MCFClass):
+    number: Integer
+    def __init__(self, *args, **kwargs):
+        super().__init__(Inner, args, kwargs)
+    def __construct__(self, num: Integer):
+        self.number.assign(num)
+    def increase(self, step: Integer) -> FakeNone:
+        self.number += step
+
 class Fib(MCFClass):
     a1: Integer
-    a2: Integer
-    def __init__(self, **kwargs):
+    a2: Inner
+    def __init__(self, *args, **kwargs):
         super().__init__(
-            Fib, kwargs,
-            a1=Integer(1),
-            a2=Integer(1)
+            Fib, args, kwargs
         )
-        self.complete()
-    def step(self) -> FakeNone:
-        temp = self.a1 + self.a2
-        self.a1.assign(self.a2)
-        self.a2.assign(temp)
-    def get(self) -> Integer:
-        Return(self.a2)
+    def __construct__(self, s1: Integer, s2: Inner):
+        self.a1.assign(s1)
+        self.a2.assign(s2)
+    def increase(self) -> FakeNone:
+        self.a2.increase(self.a1)
+    def show(self) -> FakeNone:
+        say(self.a2.number)
+
+@MCFunction(FakeNone)
+def test(fib: Fib):
+    say(fib)
 
 def main():
-    fib = Fib()
-    for _ in Range(29):
-        fib.step()
-        say(fib.get())
-    say(fib.get())
+    fib = Fib(Integer(10), s2=Inner(Integer(2)))
+    fib2 = Fib(Integer(1), Inner(Integer(10)))
+    for index in Range(5):
+        fib.increase()
+        fib2.increase()
+    fib.show()
+    fib2.show()
+    test(fib)
+    test(fib2)
             
 if __name__ == '__main__':
     main()

@@ -167,10 +167,6 @@ class MCFunction(Generic[Ret]):
     def _push_stack(self) -> None:
         push_stack()
 
-    def _new_stack(self) -> None:
-        MCF._context.update(self._context)
-        new_stack()
-
     def _pop_stack(self) -> None:
         pop_stack()
 
@@ -269,7 +265,8 @@ class MCFunction(Generic[Ret]):
                     self._context[var._mcf_id] = var
                 
                 # 更新当前上下文
-                self._new_stack()
+                MCF._context.update(self._context)
+                new_stack()
                 Function(self._body_sig).call()
 
                 MCF.forward(self._body_path)
@@ -288,7 +285,7 @@ class MCFunction(Generic[Ret]):
                 MCF.rewind()
             else:
                 # 更新当前上下文
-                self._new_stack()
+                MCF._context.update(self._context)
 
             Function(self._entry_sig).with_args(
                 Data.storage(MCF.storage), "call"
@@ -330,6 +327,6 @@ def Return(ret_value: MCFVariable = FakeNone()) -> None:
         )
     if MCF.do_gc:
         for shadow in MCF._context.values():
-            if shadow._meta == 'norm':
+            if shadow._var_meta == 'norm':
                 shadow.rm()
     ReturN().value(1)

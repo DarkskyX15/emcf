@@ -26,7 +26,7 @@ class MCFVariable:
     """
     _mcf_id: str
     _gc_sign: GCSign
-    _meta: str
+    _var_meta: str
 
     def __init__(self, init_val: Any, void: bool):
         """初始化MCF变量
@@ -42,7 +42,7 @@ class MCFVariable:
         创建Fool ID，且不会被记录至当前的上下文。目前空值仅在上下文列表中使用，列表
         中空值的`_gc_sign`属性被设为`shadow`，防止重复析构的同时保留类型的操作。
         """
-        self._meta = 'norm'
+        self._var_meta = 'norm'
         self._gc_sign = 'norm' if MCF.do_gc else 'none'
         if not void:
             self._mcf_id = MCF.getFID()
@@ -82,7 +82,9 @@ class MCFVariable:
 
     @staticmethod
     def macro_construct(slot: str, mcf_id: str) -> Self:
-        """从`slot`指定的宏位置创建Fool ID为`mcf_id`的实例"""
+        """从`slot`指定的宏位置创建Fool ID为`mcf_id`的实例，
+        但不保存至上下文。
+        """
         raise NotImplementedError
 
     @staticmethod

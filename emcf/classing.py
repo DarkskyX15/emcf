@@ -1,6 +1,7 @@
 
 from .types import *
 from ._writers import *
+from ._writers import _MultiCollector
 from ._utils import console
 from .functional import push_stack, new_stack, pop_stack
 from .display import say
@@ -47,7 +48,6 @@ def IgnoredMethod(target: Mtd) -> Mtd:
     return target
 
 # method do not support Ref at present
-# init arguments can not be used in __init__ context
 # __init__ function should be strictly formatted
 
 Ret = TypeVar("ReturnType")
@@ -59,24 +59,19 @@ class MCFClass(MCFVariable):
     def __init__(
         self,
         cls: Type,
-        kws: dict[str, Any],
-        **kwargs: MCFVariable
+        args: tuple[MCFVariable],
+        kwargs: dict[str, MCFVariable]
     ):
         """初始化一个自定义类。"""
-        void = kws.get("void", False)
-        super().__init__(None, void)
-        # empty cls
-        if cls is None: return
-        first_init = True
+        init_val = kwargs.pop("init_val", 'val')
+        void = kwargs.pop("void", False)
 
-        def create_meta():
-            nonlocal first_init
+        def create_meta(out_self: 'MCFClass', cls):
             # resolution
             meta = resolution_cache.get(cls.__name__, None)
             if meta is not None:
-                first_init = False
-                self._meta = meta
-                return
+                out_self._meta = meta
+                return False
             cls_info = {}
             # resolve cls
             for name, tp in cls.__annotations__.items():
@@ -97,31 +92,35 @@ class MCFClass(MCFVariable):
             for name in cls_info.keys():
                 fid_map[name] = MCF.getFID()
 
-            self._meta = MetaInfo(cls, cls.__name__, cls_info, fid_map)
-            resolution_cache[cls.__name__] = self._meta
+            resolution_cache[cls.__name__] = MetaInfo(
+                cls, cls.__name__, cls_info, fid_map
+            )
+            out_self._meta = resolution_cache[cls.__name__]
+            return True
 
-        def open_mem():
-            self._meta.name_shadow_map = {}
-            for name, tp in self._meta.name_type_map.items():
-                fid = self._meta.name_id_map[name]
+        def open_mem(out_self: 'MCFClass'):
+            out_self._meta.name_shadow_map = {}
+            for name, tp in out_self._meta.name_type_map.items():
+                fid = out_self._meta.name_id_map[name]
                 value: MCFVariable = tp(init_val=None, void=True)
                 value._mcf_id = fid
                 value._gc_sign = 'shadow'
-                value._meta = 'cls'
-                self._meta.name_shadow_map[name] = value
+                value._var_meta = 'cls'
+                out_self._meta.name_shadow_map[name] = value
 
         def decorate(
+            out_self: 'MCFClass',
+            cls: Type,
             method: Callable[[*Args], Ret],
-            cls_meta: MetaInfo,
             func_detail: tuple[str, str],
             body_detail: tuple[str, str]
         ) -> Callable[[*Args], Ret]:
+            cls_meta = out_self._meta
             static = isinstance(method, staticmethod)
             if static:
                 arg_count = method.__func__.__code__.co_argcount
             else:
                 arg_count = method.__code__.co_argcount
-            mcf_id = self._mcf_id
             ret_tp = method.__annotations__.get("return", None)
             if ret_tp is None:
                 console.error(
@@ -157,6 +156,7 @@ class MCFClass(MCFVariable):
 
             @wraps(method)
             def wrapper(*args: *Args) -> Ret:
+                mcf_id = args[0]._mcf_id if not static else 'ERR'
                 start = 0 if static else 1
                 arg_check = True
                 if len(args) > arg_count:
@@ -216,7 +216,8 @@ class MCFClass(MCFVariable):
                         collected.append(new)
                     # add context of self
                     if not static:
-                        export_info.update(self._meta.name_shadow_map)
+                        for value in cls_meta.name_shadow_map.values():
+                            export_info[value._mcf_id] = value
                     # update context & call
                     MCF._context.update(export_info)
                     new_stack()
@@ -233,7 +234,6 @@ class MCFClass(MCFVariable):
                     MCF.rewind()
                 else:
                     MCF._context.update(export_info)
-                    new_stack()
                 
                 # call function
                 Function(func_detail[1]).with_args(
@@ -262,7 +262,39 @@ class MCFClass(MCFVariable):
             if static: return staticmethod(wrapper)
             else: return wrapper
 
-        def resolve_method():
+        def resolve_init(
+            out_self: 'MCFClass',
+            args: list,
+            kwargs: dict[str, Any]
+        ):
+            MCF.forward(out_self._meta.init_detail[0])
+            index = 0
+            new_args = []
+            new_kwargs = {}
+            for arg in args:
+                new_arg = arg.macro_construct(f"m{index}", MCF.getFID())
+                new_args.append(new_arg)
+                MCF.addContext(new_arg)
+                index += 1
+            for name, kwarg in kwargs.items():
+                new_kwarg = kwarg.macro_construct(f"m{index}", MCF.getFID())
+                new_kwargs[name] = new_kwarg
+                MCF.addContext(new_kwarg)
+                index += 1
+            # body info
+            body_path, body_sig = MCF.makeFunction()
+            # forward to body
+            MCF.forward(body_path)
+            out_self.__construct__(*new_args, **new_kwargs)
+            MCF.rewind()
+            # call function
+            Function(body_sig).call()
+
+        def resolve_method(
+            out_self: 'MCFClass',
+            cls: Type,
+            decorator: Callable 
+        ):
             for name, method in cls.__dict__.items():
                 if name.startswith('__') or name.endswith('__'):
                     continue
@@ -276,58 +308,105 @@ class MCFClass(MCFVariable):
                     continue
                 setattr(
                     cls, name,
-                    decorate(
-                        method, self._meta,
+                    decorator(
+                        out_self, cls, method,
                         MCF.makeFunction(), MCF.makeFunction()
                     )
                 )
 
-        create_meta()
+        # init class meta
+        first_init = create_meta(self, cls)
         if first_init:
-            open_mem()
-            resolve_method()
-        if void:
-            return
+            open_mem(self)
 
-        self.temp = []
-        Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value(r"{}")
+        # do not call assign on init
+        super().__init__(None, void)
+
+        if first_init:
+            resolve_method(self, cls, decorate)
+
+        # setup attributes
         for name, shadow in self._meta.name_shadow_map.items():
-            init = kwargs.get(name, None)
-            if init is None:
+            setattr(self, name, shadow)
+
+        # stop creating command if is an void value
+        if void: return
+
+        # create body
+        Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value(r"{}")
+        
+        # stop construct call if init_val is None
+        if init_val is None: return
+
+        # argument check
+        cstr_count = self.__construct__.__code__.co_argcount
+        current_count = len(args) + len(kwargs)
+        if current_count != cstr_count - 1:
+            console.error(
+                MCFValueError(
+                    f"Constructor in class {self._meta.cls_name} needs"
+                    f"{cstr_count - 1} arguments, while {current_count} are given."
+                )
+            )
+            # do not construct if args do not match
+            return
+        
+        # move arguments
+        index = 0
+        for arg in args:
+            if not isinstance(arg, MCFVariable):
                 console.error(
-                    MCFValueError(
-                        f"Member {name} in class {self._meta.cls_name} is not"
-                        " initialized."
+                    MCFTypeError(
+                        "Cannot pass argument of type {} to constructor of "
+                        f"class {self._meta.cls_name}.", type(arg)
                     )
                 )
-            else:
-                self.temp.append(init)
-                shadow.assign(init)
-            setattr(self, name, shadow)
-        
-        # push frame
+            Data.storage(MCF.storage).modify_set(f"call.m{index}").value(
+                f'"{arg._mcf_id}"'
+            )
+            index += 1
+        for name, arg in kwargs.items():
+            if not isinstance(arg, MCFVariable):
+                console.error(
+                    MCFTypeError(
+                        "Cannot pass keyword argument of type {} to"
+                        f"constructor of class {self._meta.cls_name}.",
+                        type(arg)
+                    )
+                )
+            Data.storage(MCF.storage).modify_set(f"call.m{index}").value(
+                f'"{arg._mcf_id}"'
+            )
+            index += 1
+
+        # push frame to call construct
         push_stack()
 
         # add members to context
         new_stack()
-        MCF._context.update(self._meta.name_shadow_map)
+        for shadow in self._meta.name_shadow_map.values():
+            MCF._context[shadow._mcf_id] = shadow
+        
+        # write constructor if first init
+        if first_init:
+            resolve_init(self, args, kwargs)
+            MCF.rewind()
 
-        # forward to init context
-        MCF.forward(self._meta.init_detail[0])
+        # call constructor
+        Function(self._meta.init_detail[1]).with_args(
+            Data.storage(MCF.storage), "call"
+        )
 
-    def complete(self) -> None:
-        # rewind from init context
-        MCF.rewind()
-        # write init call
-        Function(self._meta.init_detail[1]).call()
         # pop stack
         pop_stack()
-        # clear init values
-        del self.temp
+
         # save back to class
         for shadow in self._meta.name_shadow_map.values():
             shadow.move(f"mem.{self._mcf_id}.{shadow._mcf_id}")
 
+    def __construct__(self) -> None:
+        """派生类应实现构造函数"""
+        raise NotImplementedError
 
     def assign(self, value: Self) -> None:
         Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
@@ -349,14 +428,17 @@ class MCFClass(MCFVariable):
         raise NotImplementedError
 
     def construct(self, src: str) -> None:
-        """派生类应该自行实现构造函数"""
+        """派生类应该自行实现NBT构造函数"""
         raise NotImplementedError
 
     def macro_construct(self, slot: str, mcf_id: str) -> Self:
         """默认宏构造函数"""
-        temp = self._meta.cls(void=True)
-
-
+        temp: MCFVariable = self._meta.cls(init_val=None, void=True)
+        temp._mcf_id = mcf_id
+        Data.storage(MCF.storage).modify_set(f"mem.{mcf_id}", True).via(
+            Data.storage(MCF.storage), f"mem.$({slot})"
+        )
+        return temp
 
     def duplicate(self, init_val: Any = None, void = False) -> Self:
         """产生MCFClass对象。
@@ -367,7 +449,11 @@ class MCFClass(MCFVariable):
         若需要复制一个自定义类，请在自定义类的`__init__`方法中做修改，使其支持复制
         操作。
         """
-        return MCFClass(None, void)
+        return MCFClass(
+            self._meta.cls,
+            (),
+            {"init_val": init_val, "void": void}
+        )
     
     def rm(self):
         Data.storage(MCF.storage).remove(f"mem.{self._mcf_id}")
