@@ -5,7 +5,7 @@ from ._utils import getMultiPaths, console
 from typing import TypeAlias, Any, Literal, TextIO, Callable, Protocol, TypeVarTuple
 import os, random, atexit
 
-EMCF = "a0.1.5"
+EMCF = "a0.1.6"
 
 GCSign: TypeAlias = Literal['shadow', 'norm', 'none']
 ConfigMap: TypeAlias = dict[Literal[
@@ -252,6 +252,7 @@ scoreboard players set {MCF.LOOP_CONT} {self.sb_sys} 0
 
     def _merge_signatures(self, target: dict[str, list[str]]) -> None:
         for cp_id in target.keys():
+            # append fool id signatures & sign
             here = self._component_reg.get(cp_id, None)
             if here is not None:
                 fid = here[here.rfind('/') + 1:]

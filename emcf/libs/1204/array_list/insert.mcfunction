@@ -1,0 +1,1 @@
+$data modify storage __st__ mem.$(m1) insert $(m0) from storage __st__ register

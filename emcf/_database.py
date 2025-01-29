@@ -39,7 +39,7 @@ class MCFDataBase:
         with open(path, 'r') as file:
             self.selectors = json.loads(file.readline())
     
-    def validateSign(self, sign: str) -> None:
+    def validateSign(self, sign: str) -> bool:
         paras = sign.split('.')
         sign_path = os.path.join(self._path, *paras) + '.mcfunction'
         if not os.path.exists(sign_path):
@@ -62,28 +62,38 @@ class MCFDataBase:
         for component in self._loaded_cps:
             cp_path = os.path.join(self._path, *component.split('.'))
             config_path = os.path.join(cp_path, "component.json")
+            # config surely exists
             with open(config_path, 'r', encoding='utf-8') as rd:
                 config = json.loads(rd.read())
+            # config json should be a dict
             if not isinstance(config, dict):
                 console.error(
                     MCFComponentError(
                         f"Invalid format for component.json in component '{component}'"
                     )
                 )
+            # load config
             namespace = config.get('namespace', 'local')
             requires_map[component] = config.get('requires', [])
+            # get all mcfunction in component
             files, _ = getMultiPaths(cp_path)
             files = [file for file in files if file.endswith('.mcfunction')]
+            # resolve all mcfunction
             signature_mapping: dict[str, list[str]] = {}
+            # build sign for function files
             sub_cps: list[str] = []
+            # file path
             for file in files:
                 rel = os.path.relpath(file, cp_path).removesuffix('.mcfunction')
+                # sign
                 sub_cp_id = component + '.' + '.'.join(rel.split(SLASH))
                 sub_cps.append(sub_cp_id)
+                # signature
                 sub_func_sig = f"{namespace}:{'/'.join(rel.split(SLASH))}"
                 signature_mapping[sub_cp_id] = [sub_func_sig, file]
             callback(signature_mapping)
             symbol_map[component] = signature_mapping
+        # replace & write
         for component in symbol_map.keys():
             macros = self._cps_macros[component]
             replacements = []
@@ -108,8 +118,10 @@ class MCFDataBase:
 
     def pushComponent(self, cp_id: str, macros: dict[str, str]) -> bool:
         if cp_id in self._loaded_cps:
+            # already loaded
             return True
         if cp_id not in self._available_cps:
+            # not an available component
             return False
         self._loaded_cps.add(cp_id)
         self._cps_macros[cp_id] = macros

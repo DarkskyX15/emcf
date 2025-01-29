@@ -2,23 +2,27 @@
 from .types import *
 from .classing import *
 from .control import *
-from typing import TypeVar, NewType, Generic, Iterable, Optional, Any
+from ._writers import *
+from ._exceptions import *
+from ._components import builtin_components as builtin_cps
+from ._utils import iterable, console
+from .core import MCF
+from typing import (
+    TypeVar, NewType, Generic, Iterable, Optional, Any, TypeAlias,
+    Type, Annotated, get_args, get_origin
+)
+
 
 __all__ = [
-    'Array'
+    'ArrayList',
+    'Byte',
+    'Int',
+    'Long',
 ]
 
-ElemType = TypeVar("ElementType")
-class Array(MCFVariable, Generic[ElemType]):
-    def __init__(
-        self,
-        arr: Optional[Iterable[MCFVariable]],
-        **kwargs: Any
-    ):
-        init_val = kwargs.get("init_val", None)
-        void = kwargs.get("void", False)
-        super().__init__(init_val, void)
-        if void: return
-        
 
-Array[int]
+
+
+
+
+

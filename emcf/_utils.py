@@ -5,7 +5,15 @@ from typing import Any
 __all__ = [
     'getMultiPaths',
     'LogOutput'
+    'iterable'
 ]
+
+def iterable(obj: Any, /) -> bool:
+    try:
+        iter(obj)
+        return True
+    except TypeError:
+        return False
 
 def getMultiPaths(folder_path: str) -> tuple[list[str], list[str]]:
     file_path_list = list()

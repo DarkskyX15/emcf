@@ -56,5 +56,15 @@ class BuiltinComponents:
             "st": MCF.storage
         }
 
+        self.array_list = {
+            "st": MCF.storage,
+            "bd": MCF.sb_sys,
+            "buf1": MCF.BUFFER1,
+            "buf2": MCF.BUFFER2,
+            "buf3": MCF.BUFFER3,
+            "buf4": MCF.BUFFER4,
+            "cst": MCF.CALC_CONST
+        }
+
 builtin_components = BuiltinComponents()
 MCF.initializeHelper(builtin_components.initialize)

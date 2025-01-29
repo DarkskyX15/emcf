@@ -3,11 +3,15 @@ MCF所有基础变量的封装
 """
 
 from .core import MCF, GCSign
-from ._utils import console
+from ._utils import console, iterable
 from ._exceptions import *
 from ._writers import *
 from ._components import builtin_components as built_cps
-from typing import TypeAlias, NewType, Any, Union, TextIO, Self, Literal
+from typing import (
+    TypeAlias, NewType, Any, Union, TextIO, Self, Literal, Iterable,
+    Generic, TypeVar, TypeVarTuple, Annotated, get_origin, get_args,
+    Type, ClassVar,
+)
 
 
 __all__ = [
@@ -16,6 +20,10 @@ __all__ = [
     'Condition',
     'Integer',
     'Float',
+    'ArrayList',
+    'Long',
+    'Int',
+    'Byte'
 ]
 
 
@@ -81,7 +89,7 @@ class MCFVariable:
         raise NotImplementedError
 
     @staticmethod
-    def macro_construct(slot: str, mcf_id: str) -> Self:
+    def macro_construct(slot: str, mcf_id: str) -> 'MCFVariable':
         """从`slot`指定的宏位置创建Fool ID为`mcf_id`的实例，
         但不保存至上下文。
         """
@@ -91,7 +99,7 @@ class MCFVariable:
     def duplicate(
         init_val: Any = None,
         void: bool = False
-    ) -> Self:
+    ) -> 'MCFVariable':
         """产生与自身类型相同的对象"""
         raise NotImplementedError
 
@@ -116,7 +124,7 @@ class FakeNone(MCFVariable):
     def duplicate(
         init_val: Any = None,
         void: bool = True
-    ) -> Self:
+    ) -> 'FakeNone':
         return FakeNone(None, True)
 
     # 不做回收处理
@@ -124,26 +132,18 @@ class FakeNone(MCFVariable):
         pass
 
 
-Float = NewType("Float", MCFVariable)
-FloatConvertible: TypeAlias = Float | float | int
-
-Condition = NewType("Condition", MCFVariable)
-ConditionConvertible: TypeAlias = Condition | bool
-
-Integer = NewType("Integer", MCFVariable)
-IntegerConvertible: TypeAlias = Integer | int
-
+ConditionConvertible: TypeAlias = 'Condition | bool'
 
 class Condition(MCFVariable):
     """布尔值类型"""
     def __init__(
         self,
-        init_val: ConditionConvertible | None = False,
+        init_val: 'ConditionConvertible | None' = False,
         void: bool = False
     ):
         super().__init__(init_val, void)
 
-    def assign(self, value: ConditionConvertible) -> Condition:
+    def assign(self, value: ConditionConvertible) -> None:
         """向布尔值赋值，可使用`Condition`或`bool`类型。"""
         if isinstance(value, bool):
             ScoreBoard.players_set(
@@ -165,7 +165,7 @@ class Condition(MCFVariable):
             )
 
     @staticmethod
-    def macro_construct(slot: str, mcf_id: str) -> Condition:
+    def macro_construct(slot: str, mcf_id: str) -> 'Condition':
         temp = Condition(None, True)
         temp._mcf_id = mcf_id
         ScoreBoard.players_operation(
@@ -177,9 +177,9 @@ class Condition(MCFVariable):
 
     @staticmethod
     def duplicate(
-        init_val: ConditionConvertible | None = False,
+        init_val: 'ConditionConvertible | None' = False,
         void: bool = False
-    ) -> Condition:
+    ) -> 'Condition':
         return Condition(init_val, void)
 
     def move(self, dist: str) -> None:
@@ -202,7 +202,7 @@ class Condition(MCFVariable):
             src, self._mcf_id, MCF.sb_general, 1.0
         )
 
-    def And(self, value: ConditionConvertible) -> Condition:
+    def And(self, value: ConditionConvertible) -> 'Condition':
         """与另一`Condition`或`bool`做逻辑与操作，返回新布尔值"""
         temp = Condition(self)
         if isinstance(value, bool):
@@ -230,7 +230,7 @@ class Condition(MCFVariable):
             )
         return temp
 
-    def Or(self, value: ConditionConvertible) -> Condition:
+    def Or(self, value: ConditionConvertible) -> 'Condition':
         """与另一`Condition`或`bool`做逻辑或操作，返回新布尔值"""
         temp = Condition(self)
         if isinstance(value, bool):
@@ -254,7 +254,7 @@ class Condition(MCFVariable):
             )
         return temp
 
-    def Not(self) -> Condition:
+    def Not(self) -> 'Condition':
         """返回值与自身逻辑非后值一致的新布尔值"""
         temp = Condition(self)
         self._not(temp._mcf_id)
@@ -275,16 +275,18 @@ class Condition(MCFVariable):
         ScoreBoard.players_reset(self._mcf_id, MCF.sb_general)
 
 
+IntegerConvertible: TypeAlias = 'Integer | int'
+
 class Integer(MCFVariable):
 
     def __init__(
         self,
-        init_val: IntegerConvertible | Float | None = 0,
+        init_val: 'IntegerConvertible | Float | None' = 0,
         void: bool = False
     ):
         super().__init__(init_val, void)
 
-    def assign(self, value: IntegerConvertible | Float) -> Integer:
+    def assign(self, value: 'IntegerConvertible | Float') -> 'Integer':
         if isinstance(value, int):
             ScoreBoard.players_set(self._mcf_id, MCF.sb_general, value)
         elif isinstance(value, Integer):
@@ -330,7 +332,7 @@ class Integer(MCFVariable):
         )
 
     @staticmethod
-    def macro_construct(slot: str, mcf_id: str) -> Integer:
+    def macro_construct(slot: str, mcf_id: str) -> 'Integer':
         temp = Integer(None, True)
         temp._mcf_id = mcf_id
         ScoreBoard.players_operation(
@@ -342,15 +344,15 @@ class Integer(MCFVariable):
 
     @staticmethod
     def duplicate(
-        init_val: IntegerConvertible | None = 0,
+        init_val: 'IntegerConvertible | None' = 0,
         void: bool = False
-    ) -> Integer:
+    ) -> 'Integer':
         return Integer(init_val, void)
 
-    def __pos__(self) -> Integer:
+    def __pos__(self) -> 'Integer':
         return Integer(self)
 
-    def __neg__(self) -> Integer:
+    def __neg__(self) -> 'Integer':
         temp = Integer(self)
         ScoreBoard.players_set(MCF.CALC_CONST, MCF.sb_sys, -1)
         ScoreBoard.players_operation(
@@ -359,7 +361,7 @@ class Integer(MCFVariable):
         )
         return temp
 
-    def __abs__(self) -> Integer:
+    def __abs__(self) -> 'Integer':
         temp = Integer(self)
         ScoreBoard.players_set(MCF.CALC_CONST, MCF.sb_sys, '-1')
         Execute().condition('if').score_matches(
@@ -376,7 +378,7 @@ class Integer(MCFVariable):
         self,
         other: IntegerConvertible,
         ops: str
-    ) -> Integer:
+    ) -> 'Integer':
         temp = Integer(None)
         if isinstance(other, int):
             ScoreBoard.players_operation(
@@ -408,7 +410,7 @@ class Integer(MCFVariable):
         self,
         left: IntegerConvertible,
         ops: str
-    ) -> Integer:
+    ) -> 'Integer':
         temp = Integer(None)
         if isinstance(left, int):
             ScoreBoard.players_set(temp._mcf_id, MCF.sb_general, left)
@@ -459,90 +461,90 @@ class Integer(MCFVariable):
                 other
             )
 
-    def __iadd__(self, other: IntegerConvertible) -> Integer:
+    def __iadd__(self, other: IntegerConvertible) -> 'Integer':
         try:
             self._i_operation(other, '+')
         except MCFTypeError:
             return NotImplemented
         return self
 
-    def __isub__(self, other: IntegerConvertible) -> Integer:
+    def __isub__(self, other: IntegerConvertible) -> 'Integer':
         try:
             self._i_operation(other, '-')
         except MCFTypeError:
             return NotImplemented
         return self
 
-    def __ifloordiv__(self, other: IntegerConvertible) -> Integer:
+    def __ifloordiv__(self, other: IntegerConvertible) -> 'Integer':
         try:
             self._i_operation(other, '/')
         except MCFTypeError:
             return NotImplemented
         return self
 
-    def __imul__(self, other: IntegerConvertible) -> Integer:
+    def __imul__(self, other: IntegerConvertible) -> 'Integer':
         try:
             self._i_operation(other, '*')
         except MCFTypeError:
             return NotImplemented
         return self
 
-    def __imod__(self, other: IntegerConvertible) -> Integer:
+    def __imod__(self, other: IntegerConvertible) -> 'Integer':
         try:
             self._i_operation(other, '%')
         except MCFTypeError:
             return NotImplemented
         return self
 
-    def __mul__(self, other: IntegerConvertible) -> Integer:
+    def __mul__(self, other: IntegerConvertible) -> 'Integer':
         try:
             return self._operation(other, '*')
         except MCFTypeError:
             return NotImplemented
 
-    def __rmul__(self, left: IntegerConvertible) -> Integer:
+    def __rmul__(self, left: IntegerConvertible) -> 'Integer':
         return self * left
 
-    def __add__(self, other: IntegerConvertible) -> Integer:
+    def __add__(self, other: IntegerConvertible) -> 'Integer':
         try:
             return self._operation(other, '+')
         except MCFTypeError:
             return NotImplemented
 
-    def __radd__(self, left: IntegerConvertible) -> Integer:
+    def __radd__(self, left: IntegerConvertible) -> 'Integer':
         return self + left
 
-    def __sub__(self, other: IntegerConvertible) -> Integer:
+    def __sub__(self, other: IntegerConvertible) -> 'Integer':
         try:
             return self._operation(other, '-')
         except MCFTypeError:
             return NotImplemented
 
-    def __rsub__(self, left: IntegerConvertible) -> Integer:
+    def __rsub__(self, left: IntegerConvertible) -> 'Integer':
         try:
             return self._r_operation(left, '-')
         except MCFTypeError:
             return NotImplemented
 
-    def __floordiv__(self, other: IntegerConvertible) -> Integer:
+    def __floordiv__(self, other: IntegerConvertible) -> 'Integer':
         try:
             return self._operation(other, '/')
         except MCFTypeError:
             return NotImplemented
 
-    def __rfloordiv__(self, left: IntegerConvertible) -> Integer:
+    def __rfloordiv__(self, left: IntegerConvertible) -> 'Integer':
         try:
             return self._r_operation(left, '/')
         except MCFTypeError:
             return NotImplemented
 
-    def __mod__(self, other: IntegerConvertible) -> Integer:
+    def __mod__(self, other: IntegerConvertible) -> 'Integer':
         try:
             return self._operation(other, '%')
         except MCFTypeError:
             return NotImplemented
 
-    def __rmod__(self, left: IntegerConvertible) -> Integer:
+    def __rmod__(self, left: IntegerConvertible) -> 'Integer':
         try:
             return self._r_operation(left, '%')
         except:
@@ -559,7 +561,7 @@ class Integer(MCFVariable):
     ) -> Condition:
         temp = Condition(False)
         if isinstance(value, int):
-            cmp_range = [None, None]
+            cmp_range: list[int | None] = [None, None]
             for idx in index:
                 cmp_range[idx] = value + offset
             Execute().condition(
@@ -627,10 +629,12 @@ class Integer(MCFVariable):
             return NotImplemented
 
 
+FloatConvertible: TypeAlias = 'Float | float | int'
+
 class Float(MCFVariable):
     def __init__(
         self,
-        init_val: FloatConvertible | Integer | None = 0.0,
+        init_val: 'FloatConvertible | Integer | None' = 0.0,
         void: bool = False
     ):
         super().__init__(init_val, void)
@@ -655,7 +659,7 @@ class Float(MCFVariable):
         if f < 0.0: size -= 1
         return (front, back, size)
 
-    def assign(self, value: FloatConvertible | Integer) -> Float:
+    def assign(self, value: 'FloatConvertible | Integer') -> 'Float':
         if isinstance(value, int):
             value = float(value)
         if isinstance(value, float):
@@ -726,13 +730,13 @@ class Float(MCFVariable):
 
     @staticmethod
     def duplicate(
-        init_val: FloatConvertible | None = 0.0,
+        init_val: 'FloatConvertible | None' = 0.0,
         void: bool = False
-    ) -> Float:
+    ) -> 'Float':
         return Float(init_val, void)
     
     @staticmethod
-    def macro_construct(slot: str, mcf_id: str) -> Float:
+    def macro_construct(slot: str, mcf_id: str) -> 'Float':
         temp = Float(None, True)
         temp._mcf_id = mcf_id
         Data.storage(MCF.storage).modify_set(f"mem.{mcf_id}", True).via(
@@ -741,7 +745,7 @@ class Float(MCFVariable):
         return temp
 
     @staticmethod
-    def _type_reduction(other: FloatConvertible) -> Float:
+    def _type_reduction(other: FloatConvertible) -> 'Float':
         reduced = float(other) if isinstance(other, int) else other
         if not isinstance(reduced, float) and not isinstance(reduced, Float):
             raise MCFTypeError("Can not operate {} with a Float.", other)
@@ -749,7 +753,7 @@ class Float(MCFVariable):
         return reduced
 
     @staticmethod
-    def _operate(left: Float, right: Float, ops: str) -> Float:
+    def _operate(left: 'Float', right: 'Float', ops: str) -> 'Float':
         temp = Float(None, False)
         left.move("cache.left")
         right.move("cache.right")
@@ -771,12 +775,12 @@ class Float(MCFVariable):
             )
         return temp
 
-    def _operation(self, other: FloatConvertible, ops: str) -> Float:
+    def _operation(self, other: FloatConvertible, ops: str) -> 'Float':
         target = Float._type_reduction(other)
         temp = Float._operate(self, target, ops)
         return temp
 
-    def _r_operation(self, left: FloatConvertible, ops: str) -> Float:
+    def _r_operation(self, left: FloatConvertible, ops: str) -> 'Float':
         target = Float._type_reduction(left)
         temp = Float._operate(target, self, ops)
         return temp
@@ -802,76 +806,76 @@ class Float(MCFVariable):
                 "Unsupported operation type '{}' for Float.", ops
             )
 
-    def __add__(self, other: FloatConvertible) -> Float:
+    def __add__(self, other: FloatConvertible) -> 'Float':
         try:
             return self._operation(other, '+')
         except MCFTypeError:
             return NotImplemented
 
-    def __radd__(self, left: FloatConvertible) -> Float:
+    def __radd__(self, left: FloatConvertible) -> 'Float':
         try:
             return self._r_operation(left, '+')
         except MCFTypeError:
             return NotImplemented
 
-    def __sub__(self, other: FloatConvertible) -> Float:
+    def __sub__(self, other: FloatConvertible) -> 'Float':
         try:
             return self._operation(other, '-')
         except MCFTypeError:
             return NotImplemented
 
-    def __rsub__(self, left: FloatConvertible) -> Float:
+    def __rsub__(self, left: FloatConvertible) -> 'Float':
         try:
             return self._r_operation(left, '-')
         except MCFTypeError:
             return NotImplemented
     
-    def __mul__(self, other: FloatConvertible) -> Float:
+    def __mul__(self, other: FloatConvertible) -> 'Float':
         try:
             return self._operation(other, '*')
         except MCFTypeError:
             return NotImplemented
     
-    def __rmul__(self, left: FloatConvertible) -> Float:
+    def __rmul__(self, left: FloatConvertible) -> 'Float':
         try:
             return self._r_operation(left, '*')
         except MCFTypeError:
             return NotImplemented
 
-    def __truediv__(self, other: FloatConvertible) -> Float:
+    def __truediv__(self, other: FloatConvertible) -> 'Float':
         try:
             return self._operation(other, '/')
         except MCFTypeError:
             return NotImplemented
     
-    def __rtruediv__(self, left: FloatConvertible) -> Float:
+    def __rtruediv__(self, left: FloatConvertible) -> 'Float':
         try:
             return self._r_operation(left, '/')
         except MCFTypeError:
             return NotImplemented
     
-    def __iadd__(self, other: FloatConvertible) -> Float:
+    def __iadd__(self, other: FloatConvertible) -> 'Float':
         try:
             self._i_operation(other, '+')
         except MCFTypeError:
             return NotImplemented
         return self
 
-    def __isub__(self, other: FloatConvertible) -> Float:
+    def __isub__(self, other: FloatConvertible) -> 'Float':
         try:
             self._i_operation(other, '-')
         except MCFTypeError:
             return NotImplemented
         return self
     
-    def __imul__(self, other: FloatConvertible) -> Float:
+    def __imul__(self, other: FloatConvertible) -> 'Float':
         try:
             self._i_operation(other, '*')
         except MCFTypeError:
             return NotImplemented
         return self
 
-    def __itruediv__(self, other: FloatConvertible) -> Float:
+    def __itruediv__(self, other: FloatConvertible) -> 'Float':
         try:
             self._i_operation(other, '/')
         except MCFTypeError:
@@ -965,3 +969,368 @@ class Float(MCFVariable):
 
     def rm(self):
         Data.storage(MCF.storage).remove(f"mem.{self._mcf_id}")
+
+
+Long = Annotated[Integer, 'long']
+Int = Annotated[Integer, 'int']
+Byte = Annotated[Integer, 'byte']
+
+ElementType = TypeVar("ElementType")
+class ArrayList(Generic[ElementType], MCFVariable):
+    _array_sign: ClassVar[dict[str, str]]
+    _array_suffix: ClassVar[dict[str, str]]
+    _raw_type: Type
+    _element_tp: Type[MCFVariable] | None
+    _arr_type: str
+
+    def __init__(
+        self,
+        tp: Type[ElementType] | None = None, 
+        init_val: 'Iterable[ElementType] | ArrayList[ElementType] | None' = [],
+        void: bool = False
+    ):
+        MCF.useComponent('array_list', built_cps.array_list)
+        self._raw_type = tp
+        if tp is None:
+            self._element_tp = None
+            self._arr_type = 'list'
+        elif get_origin(tp) is Annotated:
+            self._element_tp, self._arr_type = get_args(tp)
+            if self._element_tp is not Integer:
+                console.error(
+                    MCFSyntaxError(
+                        "ArrayList only accepts Annotated on Integer, not"
+                        f" {self._element_tp}."
+                    )
+                )
+                self._element_tp = Integer
+            if self._arr_type not in self._array_sign.keys():
+                console.error(
+                    MCFSyntaxError(
+                        "Annotated meta for Integer can only be one of "
+                        f"{tuple(self._array_sign.keys())}."
+                    )
+                )
+                self._arr_type = 'list'
+        else:
+            self._element_tp = tp
+            self._arr_type = 'list'
+            if not issubclass(tp, MCFVariable):
+                console.error(
+                    MCFTypeError(
+                        "Element type for ArrayList must be a subclass of "
+                        f"MCFVariable, not {tp}."
+                    )
+                )
+                self._element_tp = None
+        super().__init__(init_val, void)
+    
+    def assign(self, value: Iterable[ElementType] | 'ArrayList[ElementType]') -> None:
+        if self._element_tp is None: return
+        if isinstance(value, ArrayList):
+            if value._element_tp is not self._element_tp:
+                console.error(
+                    MCFTypeError(
+                        f"Arrays assigned should have same element type,"
+                        f" while one is {self._element_tp},"
+                        f" the other is {value._element_tp}."
+                    )
+                )
+                return
+            if value._arr_type != self._arr_type:
+                console.error(
+                    MCFTypeError(
+                        f"Arrays assigned should have same array type,"
+                        f" while one is {self._arr_type},"
+                        f" the other is {value._arr_type}."
+                    )
+                )
+                return
+            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
+                Data.storage(MCF.storage), f"mem.{value._mcf_id}"
+            )
+        elif iterable(value):
+            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value(
+                f"[{self._array_sign.get(self._arr_type, '')}]"
+            )
+            for element in value:
+                if not isinstance(element, self._element_tp):
+                    console.error(
+                        MCFTypeError(
+                            f"Element in iterable is of type {type(element)}"
+                            f", while array requires type {self._element_tp}."
+                        )
+                    )
+                    break
+                if self._arr_type != 'list':
+                    element: Integer
+                    element.extract("register", self._arr_type)
+                else:
+                    element.move("register")
+                Data.storage(MCF.storage).modify_append(
+                    f"mem.{self._mcf_id}"
+                ).via(
+                    Data.storage(MCF.storage), "register"
+                )
+        else:
+            console.error(
+                MCFTypeError(
+                    f"Value of type {type(value)} can't be assigned to an ArrayList."
+                )
+            )
+    
+    def move(self, dist: str) -> None:
+        Data.storage(MCF.storage).modify_set(dist).via(
+            Data.storage(MCF.storage), f"mem.{self._mcf_id}"
+        )
+
+    def duplicate(
+        self,
+        init_val: 'Iterable[ElementType] | ArrayList[ElementType] | None' = [],
+        void: bool = False
+    ) -> 'ArrayList[ElementType]':
+        return ArrayList(self._raw_type, init_val, void)
+    
+    def collect(self, src: str) -> None:
+        Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
+            Data.storage(MCF.storage), src
+        )
+
+    def extract(self, dist: str) -> None:
+        Data.storage(MCF.storage).modify_set(dist).via(
+            Data.storage(MCF.storage), f"mem.{self._mcf_id}"
+        )
+
+    def construct(self, src: str) -> None:
+        Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
+            Data.storage(MCF.storage), src
+        )
+
+    def macro_construct(
+        self,
+        slot: str,
+        mcf_id: str
+    ) -> 'ArrayList[ElementType]':
+        temp = ArrayList(self._raw_type, None, True)
+        Data.storage(MCF.storage).modify_set(f"mem.{mcf_id}", True).via(
+            Data.storage(MCF.storage), f"mem.$({slot})"
+        )
+        temp._mcf_id = mcf_id
+        return temp
+
+    def rm(self):
+        Data.storage(MCF.storage).remove(f"mem.{self._mcf_id}")
+
+
+    def size(self) -> Integer:
+        if self._element_tp is None:
+            raise NotImplementedError(
+                "Method 'size' of ArrayList[None] is not defined."
+            )
+        ret = Integer(None, False)
+        Execute().store('result').score(ret._mcf_id, MCF.sb_general).run(
+            Data.storage(MCF.storage).get(f"mem.{self._mcf_id}")
+        )
+        return ret
+
+    def append(self, element: ElementType) -> None:
+        # invalid type
+        if self._element_tp is None:
+            raise NotImplementedError(
+                "Method 'append' of ArrayList[None] is not defined."
+            )
+        # not the same type
+        if type(element) is not self._element_tp:
+            console.error(
+                MCFTypeError(
+                    f"ArrayList here requires type {self._element_tp}."
+                )
+            )
+            return
+        element.move("register")
+        Data.storage(MCF.storage).modify_append(f"mem.{self._mcf_id}").via(
+            Data.storage(MCF.storage), "register"
+        )
+
+    def insert(
+        self,
+        index: IntegerConvertible,
+        element: ElementType
+    ) -> None:
+        if self._element_tp is None:
+            raise NotImplementedError(
+                "Method 'insert' of ArrayList[None] is not defined."
+            )
+        if type(element) is not self._element_tp:
+            console.error(
+                MCFTypeError(
+                    f"ArrayList requires type {self._element_tp}."
+                )
+            )
+            return
+        # store index
+        if isinstance(index, int):
+            Data.storage(MCF.storage).modify_set("call.m0").value(str(index))
+        elif isinstance(index, Integer):
+            index.move("call.m0")
+        else:
+            console.error(
+                MCFTypeError(
+                    f"Invalid index type: {type(index)}."
+                )
+            )
+        # save list ptr
+        Data.storage(MCF.storage).modify_set("call.m1").value(f'"{self._mcf_id}"')
+        # move element to register
+        element.move("register")
+        # call
+        Function(MCF.builtinSign('array_list.insert')).with_args(
+            Data.storage(MCF.storage), "call"
+        )
+
+    def prepend(self, element: ElementType) -> None:
+        # invalid type
+        if self._element_tp is None:
+            raise NotImplementedError(
+                "Method 'prepend' of ArrayList[None] is not defined."
+            )
+        # not the same type
+        if type(element) is not self._element_tp:
+            console.error(
+                MCFTypeError(
+                    f"ArrayList here requires type {self._element_tp}."
+                )
+            )
+            return
+        element.move("register")
+        Data.storage(MCF.storage).modify_prepend(f"mem.{self._mcf_id}").via(
+            Data.storage(MCF.storage), "register"
+        )
+
+    def pop(self, index: IntegerConvertible = -1) -> ElementType:
+        """Pop last element by default."""
+        if self._element_tp is None:
+            raise NotImplementedError(
+                "Method 'pop' of ArrayList[None] is not defined."
+            )
+        # export index on m0
+        if isinstance(index, int):
+            Data.storage(MCF.storage).modify_set("call.m0").value(str(index))
+        elif isinstance(index, Integer):
+            index.move("call.m0")
+        else:
+            console.error(
+                MCFTypeError(
+                    f"Invalid index type: {type(index)}."
+                )
+            )
+        # store list ptr
+        Data.storage(MCF.storage).modify_set("call.m1").value(f'"{self._mcf_id}"')
+        Function(MCF.builtinSign('array_list.pop')).with_args(
+            Data.storage(MCF.storage), "call"
+        )
+        # create return value
+        ret_value = self._element_tp(init_val=None, void=False)
+        ret_value.collect("register")
+        return ret_value
+    
+    def __getitem__(
+        self,
+        index_or_slice: 'IntegerConvertible | slice'
+    ) -> 'ElementType | ArrayList[ElementType]':
+        if self._element_tp is None:
+            raise NotImplementedError(
+                "Method '__getitem__' of ArrayList[None] is not defined."
+            )
+        if isinstance(index_or_slice, int):
+            Data.storage(MCF.storage).modify_set("call.m0").value(str(index_or_slice))
+            Data.storage(MCF.storage).modify_set("call.m1").value(f'"{self._mcf_id}"')
+            Function(MCF.builtinSign('array_list.at')).with_args(
+                Data.storage(MCF.storage), "call"
+            )
+            ret_val = self._element_tp(init_val=None, void=False)
+            ret_val.collect("register")
+            return ret_val
+        elif isinstance(index_or_slice, Integer):
+            index_or_slice.move("call.m0")
+            Data.storage(MCF.storage).modify_set("call.m1").value(f'"{self._mcf_id}"')
+            Function(MCF.builtinSign('array_list.at')).with_args(
+                Data.storage(MCF.storage), "call"
+            )
+            ret_val = self._element_tp(init_val=None, void=False)
+            ret_val.collect("register")
+            return ret_val
+        elif isinstance(index_or_slice, slice):
+            # validate args
+            def validate_args(
+                arg: 'IntegerConvertible | None',
+                name: str
+            ) -> None:
+                if arg is None: return
+                if not isinstance(arg, int) and not isinstance(arg, Integer):
+                    console.error(
+                        MCFTypeError(
+                            f"{name} of slice for ArrayList must be of type "
+                            f"int or Integer, not {type(arg)}."
+                        )
+                    )
+            validate_args(index_or_slice.start, 'Start')
+            validate_args(index_or_slice.stop, 'Stop')
+            validate_args(index_or_slice.step, 'Step')
+            # optional reduction
+            def move_score(arg: IntegerConvertible, place: str) -> None:
+                if isinstance(arg, Integer):
+                    ScoreBoard.players_operation(
+                        place, MCF.sb_sys, "=",
+                        arg._mcf_id, MCF.sb_general
+                    )
+                else:
+                    ScoreBoard.players_set(place, MCF.sb_sys, arg)
+            if index_or_slice.start is None:
+                ScoreBoard.players_set(MCF.BUFFER1, MCF.sb_sys, 0)
+            else:
+                move_score(index_or_slice.start, MCF.BUFFER1)
+            if index_or_slice.stop is None:
+                Execute().store('result').score(MCF.BUFFER2, MCF.sb_sys).run(
+                    Data.storage(MCF.storage).get(f"mem.{self._mcf_id}")
+                )
+            else:
+                move_score(index_or_slice.stop, MCF.BUFFER2)
+            if index_or_slice.step is None:
+                ScoreBoard.players_set(MCF.BUFFER3, MCF.sb_sys, 1)
+            else:
+                move_score(index_or_slice.step, MCF.BUFFER3)
+            # both None swap
+            if index_or_slice.start is None and index_or_slice.stop is None:
+                Execute().condition('if').score_matches(
+                    MCF.BUFFER3, MCF.sb_sys, None, -1
+                ).run(
+                    Function(MCF.builtinSign('array_list.swap')).call()
+                )
+            # run component
+            self.move("cache.src")
+            Data.storage(MCF.storage).modify_set("register").value(
+                f"[{self._array_sign.get(self._arr_type, '')}]"
+            )
+            Function(MCF.builtinSign('array_list.slice')).call()
+            # collect ret_val
+            ret_val = ArrayList(self._raw_type, None, False)
+            ret_val.collect("register")
+            return ret_val
+        else:
+            console.error(
+                MCFTypeError(
+                    f"Invalid argument for get item operation: {index_or_slice},"
+                    "argument must be an IntegerConvertible or a slice."
+                )
+            )
+
+ArrayList._array_sign = {
+    'byte': 'B;',
+    'int': 'I;',
+    'long': 'L;'
+}
+ArrayList._array_suffix = {
+    'byte': 'b',
+    'long': 'l'
+}

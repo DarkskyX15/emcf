@@ -1,13 +1,11 @@
 
 from .types import *
 from ._writers import *
-from ._writers import _MultiCollector
 from ._utils import console
 from .functional import push_stack, new_stack, pop_stack
-from .display import say
-from .core import MCF, MCFCore
+from .core import MCF
 from ._exceptions import MCFSyntaxError, MCFValueError, MCFTypeError
-from typing import Type, Self, TypeVarTuple, TypeVar, Any, NewType, Callable
+from typing import Type, Self, TypeVarTuple, TypeVar, Any, Callable
 from functools import wraps
 
 __all__ = [

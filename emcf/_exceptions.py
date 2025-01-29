@@ -1,7 +1,16 @@
 
 from typing import Any
 
-class MCFException(BaseException):
+__all__ = [
+    'MCFException',
+    'MCFVersionError',
+    'MCFTypeError',
+    'MCFValueError',
+    'MCFComponentError',
+    'MCFSyntaxError',
+]
+
+class MCFException(Exception):
     def __init__(self, *args):
         super().__init__(*args)
 
@@ -15,9 +24,11 @@ class MCFVersionError(MCFException):
 
 class MCFTypeError(MCFException):
     message: str
-    def __init__(self, sign: str, val: Any):
-        super().__init__(sign, val)
-        self.message = sign.format(val)
+    def __init__(self, *args: Any):
+        if len(args) == 1:
+            self.message = args[0]
+        else:
+            self.message = args[0].format(args[1])
     def __str__(self):
         return self.message
 

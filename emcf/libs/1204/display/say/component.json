@@ -1,1 +1,6 @@
-{"namespace":"std"}
+{
+    "namespace":"display",
+    "description": "Display interface for MCVersion 1.20.4.",
+    "credits": "Written by Darksky",
+    "version": "r1.0.0"
+}
