@@ -63,7 +63,8 @@ class BuiltinComponents:
             "buf2": MCF.BUFFER2,
             "buf3": MCF.BUFFER3,
             "buf4": MCF.BUFFER4,
-            "cst": MCF.CALC_CONST
+            "cst": MCF.CALC_CONST,
+            "gen": MCF.GENERAL
         }
 
 builtin_components = BuiltinComponents()

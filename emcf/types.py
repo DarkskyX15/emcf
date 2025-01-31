@@ -10,7 +10,7 @@ from ._components import builtin_components as built_cps
 from typing import (
     TypeAlias, NewType, Any, Union, TextIO, Self, Literal, Iterable,
     Generic, TypeVar, TypeVarTuple, Annotated, get_origin, get_args,
-    Type, ClassVar,
+    Type, ClassVar, overload
 )
 
 
@@ -26,6 +26,8 @@ __all__ = [
     'Byte'
 ]
 
+
+# BaseClass
 
 class MCFVariable:
     """MCF变量的基类
@@ -108,6 +110,8 @@ class MCFVariable:
         raise NotImplementedError
 
 
+# FakeNone
+
 class FakeNone(MCFVariable):
     """虚假的None类型，用于表示MCFunction中的无返回值。
 
@@ -132,8 +136,9 @@ class FakeNone(MCFVariable):
         pass
 
 
-ConditionConvertible: TypeAlias = 'Condition | bool'
+# Condition Implementation
 
+ConditionConvertible: TypeAlias = 'Condition | bool'
 class Condition(MCFVariable):
     """布尔值类型"""
     def __init__(
@@ -275,8 +280,9 @@ class Condition(MCFVariable):
         ScoreBoard.players_reset(self._mcf_id, MCF.sb_general)
 
 
-IntegerConvertible: TypeAlias = 'Integer | int'
+# Integer Implementation
 
+IntegerConvertible: TypeAlias = 'Integer | int'
 class Integer(MCFVariable):
 
     def __init__(
@@ -629,8 +635,9 @@ class Integer(MCFVariable):
             return NotImplemented
 
 
-FloatConvertible: TypeAlias = 'Float | float | int'
+# Float Implementation
 
+FloatConvertible: TypeAlias = 'Float | float | int'
 class Float(MCFVariable):
     def __init__(
         self,
@@ -971,21 +978,113 @@ class Float(MCFVariable):
         Data.storage(MCF.storage).remove(f"mem.{self._mcf_id}")
 
 
+# ArrayList Implementation
+
+ElementType = TypeVar("ElementType")
+class _IterationContext(Generic[ElementType]):
+    _iter_used: bool
+    _control_sig: str
+    _control_path: str
+    _main_sig: str
+    _main_path: str
+    _index_id: str
+    _iter_src: str
+    _source: 'ArrayList[ElementType]'
+    _ret_value: ElementType
+    def __init__(
+        self,
+        src: 'ArrayList[ElementType]',
+        element_type: type[ElementType]
+    ):
+        self._ret_value = element_type(init_val=None, void=False)
+        self._iter_used = False
+        self._control_path, self._control_sig = MCF.makeFunction()
+        self._main_path, self._main_sig = MCF.makeFunction()
+        self._iter_src = src._mcf_id
+        self._source = src
+        self._index_id = MCF.getFID()
+        self._enter()
+    
+    def _enter(self) -> None:
+        # save loop stack
+        Data.storage(MCF.storage).modify_set("register").value(r"{}")
+        ScoreBoard.to_storage(
+            "register.exit", MCF.LOOP_EXIT, MCF.sb_sys, 1.0, 'byte'
+        )
+        ScoreBoard.to_storage(
+            "register.skip", MCF.LOOP_CONT, MCF.sb_sys, 1.0, 'byte'
+        )
+        Data.storage(MCF.storage).modify_append("loop_stack").via(
+            Data.storage(MCF.storage), "register"
+        )
+        # reset loop exit flg
+        ScoreBoard.players_set(MCF.LOOP_EXIT, MCF.sb_sys, 0)
+        # entry
+        ScoreBoard.players_set(self._index_id, MCF.sb_general, 0)
+        Function(self._control_sig).call()
+        MCF.forward(self._control_path)
+        # write control
+        Execute().condition('if').score_matches(
+            MCF.LOOP_EXIT, MCF.sb_sys, 1, 1
+        ).run(
+            ReturN().value(0)
+        )
+        ScoreBoard.players_set(MCF.LOOP_CONT, MCF.sb_sys, 0)
+        Data.storage(MCF.storage).modify_set("call.m0").value(f'"{self._iter_src}"')
+        Execute().store('result').storage(MCF.storage, "call.m1", 'int', 1.0).run(
+            ScoreBoard.players_get(self._index_id, MCF.sb_general)
+        )
+        # validate
+        Function(MCF.builtinSign('array_list.iterate')).with_args(
+            Data.storage(MCF.storage), "call"
+        )
+        # return if out of range
+        Execute().condition('if').score_matches(
+            MCF.GENERAL, MCF.sb_sys, 0, 0
+        ).run(
+            ReturN().value(0)
+        )
+        # collect
+        self._ret_value.collect("register")
+        # call main
+        Function(self._main_sig).call()
+        MCF.forward(self._main_path)
+        MCF._context_type.append('loop')
+        MCF._last_ctx_type = 'norm'
+    
+    def __next__(self) -> ElementType:
+        if self._iter_used:
+            # leave
+            MCF.rewind()
+            ScoreBoard.players_add(self._index_id, MCF.sb_general, 1)
+            Function(self._control_sig).call()
+            MCF._last_ctx_type = MCF._context_type.pop()
+            MCF.rewind()
+            if MCF.do_gc:
+                # gc iterator
+                ScoreBoard.players_reset(self._index_id, MCF.sb_general)
+                # delete ref from context
+                self._ret_value.rm()
+                MCF.removeContext(self._ret_value)
+                self._ret_value._gc_sign = 'shadow'
+            raise StopIteration
+        self._iter_used = True
+        return self._ret_value
+
 Long = Annotated[Integer, 'long']
 Int = Annotated[Integer, 'int']
 Byte = Annotated[Integer, 'byte']
 
-ElementType = TypeVar("ElementType")
 class ArrayList(Generic[ElementType], MCFVariable):
     _array_sign: ClassVar[dict[str, str]]
     _array_suffix: ClassVar[dict[str, str]]
-    _raw_type: Type
-    _element_tp: Type[MCFVariable] | None
+    _raw_type: type
+    _element_tp: type[MCFVariable] | None
     _arr_type: str
 
     def __init__(
         self,
-        tp: Type[ElementType] | None = None, 
+        tp: type[ElementType] | None = None, 
         init_val: 'Iterable[ElementType] | ArrayList[ElementType] | None' = [],
         void: bool = False
     ):
@@ -1234,6 +1333,12 @@ class ArrayList(Generic[ElementType], MCFVariable):
         ret_value.collect("register")
         return ret_value
     
+    @overload
+    def __getitem__(self, index: IntegerConvertible) -> ElementType: ...
+
+    @overload
+    def __getitem__(self, _slice: slice) -> 'ArrayList[ElementType]': ...
+
     def __getitem__(
         self,
         index_or_slice: 'IntegerConvertible | slice'
@@ -1325,6 +1430,13 @@ class ArrayList(Generic[ElementType], MCFVariable):
                 )
             )
 
+    def __iter__(self) -> _IterationContext[ElementType]:
+        if self._element_tp is None:
+            raise NotImplementedError(
+                "Method '__iter__' of ArrayList[None] is not defined."
+            )
+        return _IterationContext(self, self._element_tp)
+
 ArrayList._array_sign = {
     'byte': 'B;',
     'int': 'I;',
@@ -1334,3 +1446,9 @@ ArrayList._array_suffix = {
     'byte': 'b',
     'long': 'l'
 }
+
+
+# String Implementation
+
+class String(MCFVariable):
+    pass

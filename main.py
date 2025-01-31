@@ -19,10 +19,13 @@ MCF.useConfig({
 })
 
 def main():
-    step = Integer(-2)
-    arr = ArrayList(Byte, [Integer(i) for i in range(50)])
-    arr2 = arr[::step]
-    say(arr2)
+    arr = ArrayList(Long, [Integer(i) for i in range(5)])
+    say(arr)
+    for number in arr:
+        say(number)
+    say(arr[::-1])
+    for number in arr[::-1]:
+        say(number * 10)
 
 if __name__ == '__main__':
     main()
