@@ -3,11 +3,10 @@ from .core import MCF
 from ._exceptions import MCFTypeError, MCFSyntaxError
 from .types import *
 from ._writers import *
-from ._writers import _MultiCollector
 from ._utils import console
 from typing import (
     Callable, TypeVar, TypeVarTuple, Generic,
-    Type, Any, get_origin, TypeAlias, Annotated
+    Any, get_origin, TypeAlias, Annotated
 )
 from functools import wraps
 
@@ -90,7 +89,7 @@ def pop_stack() -> None:
         var.collect(f"frame.m{index}")
         index += 1
 
-Ret = TypeVar('ReturnValue')
+Ret = TypeVar('Ret')
 Args = TypeVarTuple('Args')
 class MCFunction(Generic[Ret]):
     _entry_path: str
@@ -99,18 +98,23 @@ class MCFunction(Generic[Ret]):
     _body_sig: str
     _exported: bool
     _ret_addr: str | None
-    _ret_type: Type[Ret]
+    _ret_type: type[Ret]
     _input_addr: list[str]
     _context: dict[str, MCFVariable]
     _ref_args: dict[str, MCFVariable]
     _collected: list[MCFVariable]
+    _export_func: Callable
+    _extra_args: tuple[Any]
 
-    def __init__(self, ret_type: Type[Ret] = FakeNone):
-        self._entry_path, self._entry_sig = MCF.makeFunction()
-        self._body_path, self._body_sig = MCF.makeFunction()
+    def __init__(
+        self,
+        ret_type: type[Ret] = FakeNone,
+        extra_args: tuple[Any] = ()
+    ):
         self._ret_addr = MCF.getFID()
         self._exported = False
         self._ret_type = ret_type
+        self._extra_args = extra_args
         self._input_addr = []
         self._context = {}
         self._ref_args = {}
@@ -164,12 +168,6 @@ class MCFunction(Generic[Ret]):
                 return False
         return True
 
-    def _push_stack(self) -> None:
-        push_stack()
-
-    def _pop_stack(self) -> None:
-        pop_stack()
-
     def __call__(self, func: Callable[[*Args], None]) -> Callable[[*Args], Ret]:
 
         def early_exit():
@@ -197,31 +195,31 @@ class MCFunction(Generic[Ret]):
             index = 0
             for name, tp in func.__annotations__.items():
                 checking = args[index]
-                if type(tp) is not type:
-                    if (
-                        get_origin(tp) is not Annotated
-                        or tp.__metadata__[0] is not Ref
-                    ):
+                origin = get_origin(tp)
+                if origin is not None:
+                    if origin is Annotated and tp.__metadata__[0] is Ref:
+                        tp = tp.__origin__
+                        if not isinstance(checking, Ref):
+                            console.error(
+                                MCFTypeError(
+                                    f"Argument at position {index + 1} require a Ref"
+                                    " variable, while a variable of type {} is given.",
+                                    type(checking)
+                                )
+                            )
+                            check_pass = False
+                            continue
+                        checking = checking._wrapped
+                    elif issubclass(origin, MCFVariable):
+                        tp = origin
+                    else:
                         console.error(
                             MCFTypeError(
-                                "Invalid type annotation given: {}",
-                                tp
+                                f"Invalid type annotation given: {tp}"
                             )
                         )
                         check_pass = False
                         continue
-                    tp = tp.__origin__
-                    if not isinstance(checking, Ref):
-                        console.error(
-                            MCFTypeError(
-                                f"Argument at position {index + 1} require a Ref"
-                                " variable, while a variable of type {} is given.",
-                                type(checking)
-                            )
-                        )
-                        check_pass = False
-                        continue
-                    checking = checking._wrapped
                     
                 if not isinstance(checking, tp):
                     console.error(
@@ -241,7 +239,7 @@ class MCFunction(Generic[Ret]):
                     self._input_addr.append(MCF.getFID())
 
             # 将当前上下文压入栈中
-            self._push_stack()
+            push_stack()
 
             # 将参数导出到存储中
             valid = self._export_params(args)
@@ -291,13 +289,17 @@ class MCFunction(Generic[Ret]):
                 Data.storage(MCF.storage), "call"
             )
 
-            ret_val = self._ret_type(init_val=None, void=False)
+            ret_val = self._ret_type(
+                *(self._extra_args),
+                init_val=None,
+                void=False
+            )
             if isinstance(ret_val, FakeNone):
                 ret_val = None
-                self._pop_stack()       # 恢复上下文
+                pop_stack()       # 恢复上下文
             else:
                 ret_val.collect("ret_val")
-                self._pop_stack()           # 恢复上下文
+                pop_stack()           # 恢复上下文
                 MCF.addContext(ret_val)     # 将返回值添加至当前上下文
             
             # update ref
@@ -309,7 +311,8 @@ class MCFunction(Generic[Ret]):
 
             return ret_val
         
-        wrapper.__mcfsignature__ = self._entry_sig
+        self._export_func = wrapper
+        MCF._func_queue.append(self)
         return wrapper
 
 def Return(ret_value: MCFVariable = FakeNone()) -> None:

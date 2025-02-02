@@ -179,6 +179,17 @@ class _ExecuteConditionContext:
         self._source._context_feedback(' '.join(contents))
         return self._source
 
+    def data(
+        self,
+        target: '_DataTarget',
+        nbt_path: str
+    ) -> Execute:
+        contents = [
+            self._built, 'data', target._target, nbt_path
+        ]
+        self._source._context_feedback(' '.join(contents))
+        return self._source
+
 class Execute:
     """execute系列命令的封装"""
 

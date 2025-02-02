@@ -5,7 +5,7 @@ from ._utils import getMultiPaths, console
 from typing import TypeAlias, Any, Literal, TextIO, Callable, Protocol, TypeVarTuple
 import os, random, atexit
 
-EMCF = "a0.1.8"
+EMCF = "a0.1.11"
 
 GCSign: TypeAlias = Literal['shadow', 'norm', 'none']
 ConfigMap: TypeAlias = dict[Literal[
@@ -64,6 +64,7 @@ class MCFCore:
     _context_type: list[ContextType]
     _last_ctx_type: ContextType
     _init_helper: list[Callable]
+    _func_queue: list[Any]
 
     sb_general: str
     sb_sys: str
@@ -106,6 +107,7 @@ class MCFCore:
         self._io_redirect = None
         self.do_gc = True
         self.stop_gc = False
+        self._func_queue = []
         atexit.register(self._deconstruct)
         console.info(f'EMCF initialized, version: {EMCF}')
 
@@ -213,7 +215,13 @@ scoreboard players set {MCF.LOOP_CONT} {self.sb_sys} 0
             )
         self._io_history.append(f"{self.wk_root}/main.mcfunction")
         console.info("Compiling functions...")
+        # call functions in init helpers
         for call in self._init_helper: call(self)
+        # fill up mc functions paths
+        for func_meta in self._func_queue:
+            func_meta._entry_path, func_meta._entry_sig = MCF.makeFunction()
+            func_meta._body_path, func_meta._body_sig = MCF.makeFunction()
+            func_meta._export_func.__mcfsignature__ = func_meta._entry_sig
 
     def getFID(self) -> str:
         return self._fool_id_generator.get()
@@ -274,7 +282,7 @@ scoreboard players set {MCF.LOOP_CONT} {self.sb_sys} 0
         if self._io_redirect is not None:
             self._io_redirect.write(prefix + command_lines)
         else:
-            with open(self._io_ptr, 'a') as file:
+            with open(self._io_ptr, 'a', encoding='utf-8') as file:
                 file.write(prefix + command_lines)
 
     def forward(self, path: str) -> None:

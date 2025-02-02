@@ -67,5 +67,9 @@ class BuiltinComponents:
             "gen": MCF.GENERAL
         }
 
+        self.string = {
+            "st": MCF.storage,
+        }
+
 builtin_components = BuiltinComponents()
 MCF.initializeHelper(builtin_components.initialize)

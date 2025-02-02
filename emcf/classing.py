@@ -5,7 +5,10 @@ from ._utils import console
 from .functional import push_stack, new_stack, pop_stack
 from .core import MCF
 from ._exceptions import MCFSyntaxError, MCFValueError, MCFTypeError
-from typing import Type, Self, TypeVarTuple, TypeVar, Any, Callable
+from typing import ( 
+    Type, Self, TypeVarTuple, TypeVar, Any, Callable, get_origin, get_args,
+    Annotated
+)
 from functools import wraps
 
 __all__ = [
@@ -58,7 +61,9 @@ class MCFClass(MCFVariable):
         self,
         cls: Type,
         args: tuple[MCFVariable],
-        kwargs: dict[str, MCFVariable]
+        kwargs: dict[str, MCFVariable],
+        constructor: Callable[..., None],
+        **init_args: tuple
     ):
         """初始化一个自定义类。"""
         init_val = kwargs.pop("init_val", 'val')
@@ -73,6 +78,9 @@ class MCFClass(MCFVariable):
             cls_info = {}
             # resolve cls
             for name, tp in cls.__annotations__.items():
+                origin = get_origin(tp)
+                if origin is not None:
+                    tp = origin
                 if type(tp) is type and issubclass(tp, MCFVariable):
                     cls_info[name] = tp
                     continue
@@ -99,8 +107,9 @@ class MCFClass(MCFVariable):
         def open_mem(out_self: 'MCFClass'):
             out_self._meta.name_shadow_map = {}
             for name, tp in out_self._meta.name_type_map.items():
+                args = init_args.get(name, ())
                 fid = out_self._meta.name_id_map[name]
-                value: MCFVariable = tp(init_val=None, void=True)
+                value: MCFVariable = tp(*args, init_val=None, void=True)
                 value._mcf_id = fid
                 value._gc_sign = 'shadow'
                 value._var_meta = 'cls'
@@ -120,6 +129,7 @@ class MCFClass(MCFVariable):
             else:
                 arg_count = method.__code__.co_argcount
             ret_tp = method.__annotations__.get("return", None)
+            extra_args = ()
             if ret_tp is None:
                 console.error(
                     MCFSyntaxError(
@@ -129,7 +139,13 @@ class MCFClass(MCFVariable):
                 )
                 return method
             if type(ret_tp) is not type:
-                if ret_tp == cls_meta.cls_name:
+                origin = get_origin(ret_tp)
+                if origin is not None:
+                    if origin is Annotated:
+                        ret_tp, extra_args = get_args(ret_tp)
+                    else:
+                        ret_tp = origin
+                elif ret_tp == cls_meta.cls_name:
                     ret_tp = cls
                 else:
                     console.error(
@@ -175,7 +191,7 @@ class MCFClass(MCFVariable):
                         )
                         arg_check = False
                 if not arg_check:
-                    ret_val = ret_tp(init_val=None, void=True)
+                    ret_val = ret_tp(*extra_args, init_val=None, void=True)
                     ret_val._gc_sign = 'shadow'
                     return ret_val
 
@@ -245,7 +261,7 @@ class MCFClass(MCFVariable):
                 if issubclass(ret_tp, FakeNone):
                     ret_val = None
                 else:
-                    ret_val = ret_tp(init_val=None, void=False)
+                    ret_val = ret_tp(*extra_args, init_val=None, void=False)
                     ret_val.collect("ret_val")
                     MCF.addContext(ret_val)
 
@@ -262,6 +278,7 @@ class MCFClass(MCFVariable):
 
         def resolve_init(
             out_self: 'MCFClass',
+            func: Callable[..., None],
             args: list,
             kwargs: dict[str, Any]
         ):
@@ -283,7 +300,7 @@ class MCFClass(MCFVariable):
             body_path, body_sig = MCF.makeFunction()
             # forward to body
             MCF.forward(body_path)
-            out_self.__construct__(*new_args, **new_kwargs)
+            func(*new_args, **new_kwargs)
             MCF.rewind()
             # call function
             Function(body_sig).call()
@@ -337,7 +354,7 @@ class MCFClass(MCFVariable):
         if init_val is None: return
 
         # argument check
-        cstr_count = self.__construct__.__code__.co_argcount
+        cstr_count = constructor.__code__.co_argcount
         current_count = len(args) + len(kwargs)
         if current_count != cstr_count - 1:
             console.error(
@@ -387,7 +404,7 @@ class MCFClass(MCFVariable):
         
         # write constructor if first init
         if first_init:
-            resolve_init(self, args, kwargs)
+            resolve_init(self, constructor, args, kwargs)
             MCF.rewind()
 
         # call constructor
@@ -450,7 +467,8 @@ class MCFClass(MCFVariable):
         return MCFClass(
             self._meta.cls,
             (),
-            {"init_val": init_val, "void": void}
+            {"init_val": init_val, "void": void},
+            self.__construct__
         )
     
     def rm(self):

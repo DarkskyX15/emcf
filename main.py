@@ -19,13 +19,11 @@ MCF.useConfig({
 })
 
 def main():
-    arr = ArrayList(Long, [Integer(i) for i in range(5)])
+    s = Text('原神，启动！')
+    arr = text_to_string(s)
     say(arr)
-    for number in arr:
-        say(number)
-    say(arr[::-1])
-    for number in arr[::-1]:
-        say(number * 10)
+    ps = string_to_text(arr)
+    say(ps)
 
 if __name__ == '__main__':
     main()

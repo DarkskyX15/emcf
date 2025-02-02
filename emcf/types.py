@@ -10,7 +10,7 @@ from ._components import builtin_components as built_cps
 from typing import (
     TypeAlias, NewType, Any, Union, TextIO, Self, Literal, Iterable,
     Generic, TypeVar, TypeVarTuple, Annotated, get_origin, get_args,
-    Type, ClassVar, overload
+    Type, ClassVar, overload, Optional
 )
 
 
@@ -23,7 +23,8 @@ __all__ = [
     'ArrayList',
     'Long',
     'Int',
-    'Byte'
+    'Byte',
+    'Text'
 ]
 
 
@@ -292,7 +293,7 @@ class Integer(MCFVariable):
     ):
         super().__init__(init_val, void)
 
-    def assign(self, value: 'IntegerConvertible | Float') -> 'Integer':
+    def assign(self, value: 'IntegerConvertible | Float') -> None:
         if isinstance(value, int):
             ScoreBoard.players_set(self._mcf_id, MCF.sb_general, value)
         elif isinstance(value, Integer):
@@ -312,7 +313,6 @@ class Integer(MCFVariable):
                     value
                 )
             )
-        return self
 
     def rm(self) -> None:
         ScoreBoard.players_reset(self._mcf_id, MCF.sb_general)
@@ -666,7 +666,7 @@ class Float(MCFVariable):
         if f < 0.0: size -= 1
         return (front, back, size)
 
-    def assign(self, value: 'FloatConvertible | Integer') -> 'Float':
+    def assign(self, value: 'FloatConvertible | Integer') -> None:
         if isinstance(value, int):
             value = float(value)
         if isinstance(value, float):
@@ -699,7 +699,6 @@ class Float(MCFVariable):
                     value
                 )
             )
-        return self
     
     def move(self, dist: str) -> None:
         Data.storage(MCF.storage).modify_set(dist).via(
@@ -1448,7 +1447,141 @@ ArrayList._array_suffix = {
 }
 
 
-# String Implementation
+# String Implementation -> Text
 
-class String(MCFVariable):
-    pass
+TextConvertible: TypeAlias = 'Text | str'
+class Text(MCFVariable):
+    def __init__(
+        self,
+        init_val: Optional[TextConvertible] = "",
+        void: bool = False
+    ):
+        MCF.useComponent('string', built_cps.string)
+        super().__init__(init_val, void)
+    
+    def assign(self, value: TextConvertible) -> None:
+        if isinstance(value, str):
+            value = value.replace('"', r'\"')
+            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value(
+                f'"{value}"'
+            )
+        elif isinstance(value, Text):
+            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
+                Data.storage(MCF.storage), f"mem.{value._mcf_id}"
+            )
+        else:
+            console.error(
+                MCFTypeError(
+                    f"Can not assign variable of type {type(value)} to a Text."
+                )
+            )
+
+    def move(self, dist: str) -> None:
+        Data.storage(MCF.storage).modify_set(dist).via(
+            Data.storage(MCF.storage), f"mem.{self._mcf_id}"
+        )
+
+    def collect(self, src: str) -> None:
+        Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
+            Data.storage(MCF.storage), src
+        )
+
+    def extract(self, dist: str) -> None:
+        self.move(dist)
+
+    def construct(self, src: str):
+        self.collect(src)
+
+    @staticmethod
+    def duplicate(
+        init_val: Optional[TextConvertible] = '',
+        void: bool = False
+    ) -> 'Text':
+        return Text(init_val=init_val, void=void)
+
+    def rm(self) -> None:
+        Data.storage(MCF.storage).remove(f"mem.{self._mcf_id}")
+
+    @staticmethod
+    def macro_construct(slot: str, mcf_id: str) -> 'Text':
+        temp = Text(None, True)
+        temp._mcf_id = mcf_id
+        Data.storage(MCF.storage).modify_set(f"mem.{temp._mcf_id}", True).via(
+            Data.storage(MCF.storage), f"mem.$({slot})"
+        )
+        return temp
+
+
+    def substr(
+        self,
+        start: Optional[IntegerConvertible] = None,
+        end: Optional[IntegerConvertible] = None  
+    ) -> 'Text':            
+        def validate(arg: IntegerConvertible):
+            if not isinstance(arg, int) and not isinstance(arg, Integer):
+                console.error(
+                    MCFTypeError(
+                        "Argument for Text.substr should be a Text or str,"
+                        f" not {type(arg)}."
+                    )
+                )
+        if start is None:
+            Data.storage(MCF.storage).modify_set("call.m1").value("0")
+        else:
+            validate(start)
+            if isinstance(start, int):
+                Data.storage(MCF.storage).modify_set("call.m1").value(str(start))
+            else:
+                start.move("call.m1")
+        if end is None:
+            Execute().store('result').storage(
+                MCF.storage, "call.m2", 'int', 1.0
+            ).run(
+                Data.storage(MCF.storage).get(f"mem.{self._mcf_id}")
+            )
+        else:
+            validate(end)
+            if isinstance(end, int):
+                Data.storage(MCF.storage).modify_set("call.m2").value(str(end))
+            else:
+                end.move("call.m2")
+        Data.storage(MCF.storage).modify_set("call.m0").value(f'"{self._mcf_id}"')
+        Function(MCF.builtinSign('string.sub_text')).with_args(
+            Data.storage(MCF.storage), "call"
+        )
+        ret_val = Text(None, False)
+        ret_val.collect("register")
+        return ret_val
+
+    def size(self) -> Integer:
+        ret_ = Integer(None, False)
+        Execute().store('result').score(ret_._mcf_id, MCF.sb_general).run(
+            Data.storage(MCF.storage).get(f"mem.{self._mcf_id}")
+        )
+        return ret_
+
+    def push_back(self, text: TextConvertible) -> None:
+        if isinstance(text, str):
+            text = text.replace('"', r'\"')
+            Data.storage(MCF.storage).modify_set("call.m1").value(f'"{text}"')
+        elif isinstance(text, Text):
+            text.move("call.m1")
+            Execute().condition('if').data(
+                Data.storage(MCF.storage), 'call{m1:"\'"}'
+            ).run(
+                Data.storage(MCF.storage).modify_set("call.m1").value(
+                    '"\\\\\'"'
+                )
+            )
+        else:
+            console.error(
+                MCFTypeError(
+                    "Argument for Text.push should be a Text or str, "
+                    f"not {type(text)}."
+                )
+            )
+        self.move("call.m0")
+        Function(MCF.builtinSign('string.combine')).with_args(
+            Data.storage(MCF.storage), "call"
+        )
+        self.collect("register")

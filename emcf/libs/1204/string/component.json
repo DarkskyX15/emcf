@@ -1,0 +1,6 @@
+{
+    "namespace":"string",
+    "description": "Infrastructure for string type.",
+    "credits": "written by Darksky",
+    "version": "r1.0.0"
+}
