@@ -1,0 +1,1 @@
+$execute store success score __gen__ __bd__ run data get storage __st__ cache.src[$(m0)]

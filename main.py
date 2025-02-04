@@ -14,16 +14,14 @@ from emcf.types_extension import *
 
 MCF.useConfig({
     "namespace": "test",
-    "version": 1204,
+    "version": 57,
     "gc": True
 })
 
 def main():
-    s = Text('原神，启动！')
-    arr = text_to_string(s)
-    say(arr)
-    ps = string_to_text(arr)
-    say(ps)
+    string = text_to_string(Text("原神，启动！"))
+    rev_str = string[::-1]
+    say(string_to_text(rev_str))
 
 if __name__ == '__main__':
     main()

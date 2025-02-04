@@ -8,9 +8,9 @@ from ._exceptions import *
 from ._writers import *
 from ._components import builtin_components as built_cps
 from typing import (
-    TypeAlias, NewType, Any, Union, TextIO, Self, Literal, Iterable,
-    Generic, TypeVar, TypeVarTuple, Annotated, get_origin, get_args,
-    Type, ClassVar, overload, Optional
+    TypeAlias, Any, Union, TextIO, Self, Literal, Iterable,
+    Generic, TypeVar, Annotated, get_origin, get_args,
+    ClassVar, overload, Optional
 )
 
 
@@ -1332,6 +1332,21 @@ class ArrayList(Generic[ElementType], MCFVariable):
         ret_value.collect("register")
         return ret_value
     
+    def extend(self, src: 'ArrayList[ElementType]') -> None:
+        src.move("cache.src")
+        self.move("register")
+        Function(MCF.builtinSign('array_list.extend')).call()
+        self.collect("register")
+    
+    def __add__(self, src: 'ArrayList[ElementType]') -> 'ArrayList[ElementType]':
+        temp = ArrayList(self._raw_type, self)
+        temp.extend(src)
+        return temp
+
+    def __iadd__(self, src: 'ArrayList[ElementType]') -> 'ArrayList[ElementType]':
+        self.extend(src)
+        return self
+
     @overload
     def __getitem__(self, index: IntegerConvertible) -> ElementType: ...
 
@@ -1585,3 +1600,36 @@ class Text(MCFVariable):
             Data.storage(MCF.storage), "call"
         )
         self.collect("register")
+
+    def __ne__(self, text: TextConvertible) -> Condition:
+        result = Condition(None, False)
+        self.move("register")
+        if isinstance(text, str):
+            text = text.replace('"', r'\"')
+            Data.storage(MCF.storage).modify_set("cache.src").value(
+                f'"{text}"'
+            )
+        elif isinstance(text, Text):
+            text.move("cache.src")
+        else:
+            console.error(
+                MCFTypeError(
+                    "Argument for Text.__eq__ should be a Text or str, "
+                    f"not {type(text)}."
+                )
+            )
+        Execute().store('success').score(MCF.GENERAL, MCF.sb_sys).run(
+            Data.storage(MCF.storage).modify_set("register").via(
+                Data.storage(MCF.storage), "cache.src"
+            )
+        )        
+        ScoreBoard.players_operation(
+            result._mcf_id, MCF.sb_general, "=",
+            MCF.GENERAL, MCF.sb_sys
+        )
+        return result
+
+    def __eq__(self, text: TextConvertible) -> Condition:
+        result = self.__ne__(text)
+        result.Reverse()
+        return result

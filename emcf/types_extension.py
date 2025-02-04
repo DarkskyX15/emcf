@@ -1,5 +1,5 @@
 
-"""基于MCFClass/MCFunction自举的扩展类型"""
+"""基于MCFClass/MCFunction自举的扩展类型以及相关函数"""
 
 from .types import *
 from .classing import *
@@ -19,7 +19,8 @@ from typing import (
 
 __all__ = [
     'text_to_string',
-    'string_to_text'
+    'string_to_text',
+    'string_compare'
 ]
 
 @MCFunction(ArrayList[Text], (Text, ))
@@ -37,3 +38,13 @@ def string_to_text(string: ArrayList[Text]):
     for char in string:
         text.push_back(char)
     Return(text)
+
+@MCFunction(Condition)
+def string_compare(a: ArrayList[Text], b: ArrayList[Text]):
+    with If(a.size() != b.size()):
+        Return(Condition(False))
+    size = a.size()
+    for index in Range(size):
+        with If(a[index] != b[index]):
+            Return(Condition(False))
+    Return(Condition(True))
