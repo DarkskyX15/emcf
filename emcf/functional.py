@@ -289,6 +289,7 @@ class MCFunction(Generic[Ret]):
                 Data.storage(MCF.storage), "call"
             )
 
+            # TODO change to default construct
             ret_val = self._ret_type(
                 *(self._extra_args),
                 init_val=None,

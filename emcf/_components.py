@@ -71,5 +71,11 @@ class BuiltinComponents:
             "st": MCF.storage,
         }
 
+        self.hash_map = {
+            "st": MCF.storage,
+            "bd": MCF.sb_sys,
+            "gen": MCF.GENERAL
+        }
+
 builtin_components = BuiltinComponents()
 MCF.initializeHelper(builtin_components.initialize)

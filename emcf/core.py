@@ -174,8 +174,8 @@ data remove storage {self.storage} mem
         self.database = MCFDataBase(self._mcf_version)
 
         # make file structure
-        path_build = f"{self._dist}/{self._namespace}/functions/emcf"
-        self.wk_root = f"{self._dist}/{self._namespace}/functions"
+        path_build = f"{self._dist}/{self._namespace}/function/emcf"
+        self.wk_root = f"{self._dist}/{self._namespace}/function"
         os.makedirs(path_build, exist_ok=True)
         files, _ = getMultiPaths(self.wk_root)
         for file in files:

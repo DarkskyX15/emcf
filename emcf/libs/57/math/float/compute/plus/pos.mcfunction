@@ -47,6 +47,3 @@ execute if score __cst__ __bd__ matches 10.. run scoreboard players remove __cst
 execute store result storage __st__ register.a int 1.0 run scoreboard players get __gen__ __bd__
 execute store result storage __st__ register.e byte 1.0 run scoreboard players get __buf1__ __bd__
 execute store result storage __st__ register.v byte 1.0 run scoreboard players get __cst__ __bd__
-
-
-

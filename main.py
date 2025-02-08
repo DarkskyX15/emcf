@@ -15,13 +15,20 @@ from emcf.types_extension import *
 MCF.useConfig({
     "namespace": "test",
     "version": 57,
-    "gc": True
+    "gc": False
 })
 
 def main():
-    string = text_to_string(Text("原神，启动！"))
-    rev_str = string[::-1]
-    say(string_to_text(rev_str))
+    val = Float(114.514)
+    val2 = Float(114.114)
+    _map = HashMap({
+        "val": val,
+        "sec": val2
+    })
+    got = _map.get(Float, "sec", Float(0))
+    got += val2
+    _map.set("now", got)
+    say(_map)
 
 if __name__ == '__main__':
     main()

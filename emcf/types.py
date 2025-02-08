@@ -24,7 +24,8 @@ __all__ = [
     'Long',
     'Int',
     'Byte',
-    'Text'
+    'Text',
+    'HashMap'
 ]
 
 
@@ -977,6 +978,7 @@ class Float(MCFVariable):
         Data.storage(MCF.storage).remove(f"mem.{self._mcf_id}")
 
 
+# TODO rewrite to default construct
 # ArrayList Implementation
 
 ElementType = TypeVar("ElementType")
@@ -1462,7 +1464,7 @@ ArrayList._array_suffix = {
 }
 
 
-# String Implementation -> Text
+# Static String Implementation -> Text
 
 TextConvertible: TypeAlias = 'Text | str'
 class Text(MCFVariable):
@@ -1633,3 +1635,172 @@ class Text(MCFVariable):
         result = self.__ne__(text)
         result.Reverse()
         return result
+
+
+# Dict Implementation -> HashMap
+# Key must be a str / Text
+
+HashMapConvertible: TypeAlias = 'HashMap | dict[TextConvertible, MCFVariable]'
+ValueType = TypeVar("ValueType", bound=MCFVariable)
+class HashMap(MCFVariable):
+    def __init__(
+        self,
+        init_val: Optional[HashMapConvertible] = {},
+        void: bool = False
+    ):
+        MCF.useComponent('hash_map', built_cps.hash_map)
+        super().__init__(init_val, void)
+    
+    def assign(self, value: HashMapConvertible) -> None:
+        if isinstance(value, dict):
+            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value(r"{}")
+            for key, value in value.items():
+                if not isinstance(value, MCFVariable):
+                    console.error(
+                        MCFTypeError(
+                            f"Invalid value type for HashMap: {type(value)}."
+                        )
+                    )
+                    break
+                value.move("register")
+                if isinstance(key, str):
+                    Data.storage(MCF.storage).modify_set(
+                        f"mem.{self._mcf_id}.{key}"
+                    ).via(
+                        Data.storage(MCF.storage), f"register"
+                    )
+                elif isinstance(key, Text):
+                    Data.storage(MCF.storage).modify_set("call.m0").value(f'"{self._mcf_id}"')
+                    key.move("call.m1")
+                    Function(MCF.builtinSign('hash_map.key_pair')).with_args(
+                        Data.storage(MCF.storage), "call"
+                    )
+                else:
+                    console.error(
+                        MCFTypeError(
+                            f"Invalid key type for HashMap: {type(key)}."
+                        )
+                    )
+        elif isinstance(value, HashMap):
+            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
+                Data.storage(MCF.storage), f"mem.{value._mcf_id}"
+            )
+        else:
+            console.error(
+                MCFTypeError(
+                    f"Can not assign variable of type {type(value)} to a HashMap."
+                )
+            )
+    
+    def move(self, dist: str) -> None:
+        Data.storage(MCF.storage).modify_set(dist).via(
+            Data.storage(MCF.storage), f"mem.{self._mcf_id}"
+        )
+
+    def extract(self, dist: str) -> None:
+        self.move(dist)
+
+    def collect(self, src: str) -> None:
+        Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
+            Data.storage(MCF.storage), src
+        )
+
+    def construct(self, src: str) -> None:
+        self.construct(src)
+
+    @staticmethod
+    def macro_construct(slot: str, mcf_id: str) -> 'HashMap':
+        temp = HashMap(init_val=None, void=True)
+        temp._mcf_id = mcf_id
+        temp.collect(f"mem.$({slot})")
+        return temp
+
+    def rm(self) -> None:
+        Data.storage(MCF.storage).remove(f"mem.{self._mcf_id}")
+
+    @staticmethod
+    def duplicate(
+        init_val: Optional[HashMapConvertible] = None,
+        void: bool = False
+    ) -> 'HashMap':
+        return HashMap(init_val, void)
+
+
+    def get(
+        self,
+        tp: type[ValueType],
+        key: TextConvertible,
+        default: ValueType
+    ) -> ValueType:
+        ret_val = tp(init_val=None, void=False)
+        if not isinstance(default, MCFVariable):
+            console.error(
+                MCFTypeError(
+                    "Default argument for HashMap.get must be of type "
+                    f"MCFVariable, not {type(default)}."
+                )
+            )
+            return ret_val
+        default.move("register")
+        Data.storage(MCF.storage).modify_set("call.m0").value(f'"{self._mcf_id}"')
+        if isinstance(key, str):
+            Data.storage(MCF.storage).modify_set("call.m1").value(f'"{key}"')
+        elif isinstance(key, Text):
+            Data.storage(MCF.storage).modify_set("call.m1").via(
+                Data.storage(MCF.storage), f"mem.{key._mcf_id}"
+            )
+        else:
+            console.error(
+                MCFTypeError(
+                    "Key argument for HashMap.get must be of type "
+                    f"str or Text, not {type(key)}."
+                )
+            )
+            return ret_val
+        Function(MCF.builtinSign('hash_map.get_value')).with_args(
+            Data.storage(MCF.storage), "call"
+        )
+        ret_val.collect("register")
+        return ret_val
+    
+    def set(self, key: TextConvertible, value: MCFVariable) -> None:
+        if not isinstance(value, MCFVariable):
+            console.error(
+                MCFTypeError(
+                    "Value argument for HashMap.set must be of type "
+                    f"MCFVariable, not {type(value)}."
+                )
+            )
+            return
+        value.move("register")
+        if isinstance(key, str):
+            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}.{key}").via(
+                Data.storage(MCF.storage), "register"
+            )
+        elif isinstance(key, Text):
+            Data.storage(MCF.storage).modify_set("call.m0").value(f'"{self._mcf_id}"')
+            Data.storage(MCF.storage).modify_set("call.m1").via(
+                Data.storage(MCF.storage), f"mem.{key._mcf_id}"
+            )
+            Function(MCF.builtinSign('hash_map.set_value')).with_args(
+                Data.storage(MCF.storage), "call"
+            )
+        else:
+            console.error(
+                MCFTypeError(
+                    "Key argument for HashMap.set must be of type "
+                    f"str or Text, not {type(key)}."
+                )
+            )
+
+    def size(self) -> Integer:
+        ret_val = Integer(init_val=None, void=False)
+        Execute().store('result').score(MCF.GENERAL, MCF.sb_sys).run(
+            Data.storage(MCF.storage).get(f"mem.{self._mcf_id}")
+        )
+        ScoreBoard.players_operation(
+            ret_val._mcf_id, MCF.sb_general, "=",
+            MCF.GENERAL, MCF.sb_sys
+        )
+        return ret_val
+
