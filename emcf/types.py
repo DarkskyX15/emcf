@@ -1031,7 +1031,13 @@ class _IterationContext(Generic[ElementType]):
         ScoreBoard.players_set(self._index_id, MCF.sb_general, 0)
         Function(self._control_sig).call()
         MCF.forward(self._control_path)
-        # write control
+        # check terminate flg
+        Execute().condition('if').score_matches(
+            MCF.TERMINATE, MCF.sb_sys, 1, 1
+        ).run(
+            ReturN().value(0)
+        )
+        # check break flg
         Execute().condition('if').score_matches(
             MCF.LOOP_EXIT, MCF.sb_sys, 1, 1
         ).run(
@@ -1076,6 +1082,20 @@ class _IterationContext(Generic[ElementType]):
                 self._ret_value.rm()
                 MCF.removeContext(self._ret_value)
                 self._ret_value._gc_sign = 'shadow'
+            # recover loop stack
+            ScoreBoard.from_storage(
+                "loop_stack[-1].exit", MCF.LOOP_EXIT, MCF.sb_sys, 1.0
+            )
+            ScoreBoard.from_storage(
+                "loop_stack[-1].skip", MCF.LOOP_CONT, MCF.sb_sys, 1.0
+            )
+            Data.storage(MCF.storage).remove("loop_stack[-1]")
+            # check terminate flg
+            Execute().condition('if').score_matches(
+                MCF.TERMINATE, MCF.sb_sys, 1, 1
+            ).run(
+                ReturN().value(0)
+            )
             raise StopIteration
         self._iter_used = True
         return self._ret_value

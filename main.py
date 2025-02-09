@@ -19,7 +19,7 @@ MCF.useConfig({
 })
 
 def main():
-    x = text_to_string(Text("xxxx11111"))
+    x = text_to_string(Text("01011"))
     y = x[::-1]
     say(string_compare(x, y))
 

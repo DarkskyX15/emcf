@@ -216,6 +216,12 @@ class While:
         
         # forward to loop entry
         MCF.forward(self._control_func_path)
+        # check terminate flg
+        Execute().condition('if').score_matches(
+            MCF.TERMINATE, MCF.sb_sys, 1, 1
+        ).run(
+            ReturN().value(0)
+        )
         # reset loop skip flg
         ScoreBoard.players_set(MCF.LOOP_CONT, MCF.sb_sys, 0)
         # check exit flg
@@ -292,6 +298,12 @@ class While:
             "loop_stack[-1].skip", MCF.LOOP_CONT, MCF.sb_sys, 1.0
         )
         Data.storage(MCF.storage).remove("loop_stack[-1]")
+        # check terminate flg
+        Execute().condition('if').score_matches(
+            MCF.TERMINATE, MCF.sb_sys, 1, 1
+        ).run(
+            ReturN().value(0)
+        )
 
 class Range:
     
@@ -315,7 +327,7 @@ class Range:
             if isinstance(arg, int):
                 return Integer(arg)
             elif isinstance(arg, Integer):
-                return arg
+                return Integer(arg)
             else:
                 console.error(
                     MCFTypeError(
@@ -381,6 +393,13 @@ class Range:
         # entry
         Function(self._control_sig).call()
         MCF.forward(self._control_path)
+        # check terminate flg
+        Execute().condition('if').score_matches(
+            MCF.TERMINATE, MCF.sb_sys, 1, 1
+        ).run(
+            ReturN().value(0)
+        )
+        # check break flg
         Execute().condition('if').score_matches(
             MCF.LOOP_EXIT, MCF.sb_sys, 1, 1
         ).run(
@@ -421,6 +440,22 @@ class Range:
             Function(self._control_sig).call()
             MCF._last_ctx_type = MCF._context_type.pop()
             MCF.rewind()
+            # recover loop stack
+            ScoreBoard.from_storage(
+                "loop_stack[-1].exit", MCF.LOOP_EXIT, MCF.sb_sys, 1.0
+            )
+            ScoreBoard.from_storage(
+                "loop_stack[-1].skip", MCF.LOOP_CONT, MCF.sb_sys, 1.0
+            )
+            Data.storage(MCF.storage).remove("loop_stack[-1]")
+            # do gc
+            del self._index, self._last, self._positive, self._step
+            # check terminate flg
+            Execute().condition('if').score_matches(
+                MCF.TERMINATE, MCF.sb_sys, 1, 1
+            ).run(
+                ReturN().value(0)
+            )
             raise StopIteration
         self._used = True
         return self._index

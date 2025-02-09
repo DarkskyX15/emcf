@@ -33,10 +33,12 @@ def string_to_text(string: ArrayList[Text]):
 def string_compare(a: ArrayList[Text], b: ArrayList[Text]):
     with If(a.size() != b.size()):
         Return(Condition(False))
+    index = Integer(0)
     size = a.size()
-    for index in Range(size):
-        Return(Condition(False))
-    say(666)
-    #     with If(a[index].to(Text) != b[index].to(Text)):
-    #         Return(Condition(False))
+    for char in a.iterate(Text):
+        with If(index >= size):
+            Break()
+        with If(char != b[index].to(Text)):
+            Return(Condition(False))
+        index += 1
     Return(Condition(True))
