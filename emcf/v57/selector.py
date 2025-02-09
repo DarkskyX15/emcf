@@ -1,8 +1,8 @@
 
-from .core import MCF
-from ._utils import console
-from ._writers import *
-from ._exceptions import MCFVersionError, MCFValueError
+from ..core import MCF
+from .._utils import console
+from .._writers import *
+from .._exceptions import MCFVersionError, MCFValueError
 from typing import TextIO, Self
 
 __all__ = [

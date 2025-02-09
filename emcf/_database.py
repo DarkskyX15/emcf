@@ -8,7 +8,7 @@ __all__ = [
     'MCFDataBase',
 ]
 
-SLASH = '\\' if sys.platform.startswith('win') else '/'
+SLASH = os.path.sep
 
 class MCFDataBase:
     _path: str
@@ -36,6 +36,8 @@ class MCFDataBase:
         self._available_cps = set(files)
         self._cps_macros = dict()
 
+        # load version database
+        # TODO
         with open(path, 'r') as file:
             self.selectors = json.loads(file.readline())
     

@@ -5,7 +5,6 @@ from .types import *
 from .classing import *
 from .control import *
 from .functional import *
-from .display import say
 
 __all__ = [
     'text_to_string',
@@ -31,14 +30,11 @@ def string_to_text(string: ArrayList[Text]):
 
 @MCFunction(Condition)
 def string_compare(a: ArrayList[Text], b: ArrayList[Text]):
-    with If(a.size() != b.size()):
+    a_size = a.size()
+    b_size = b.size()
+    with If(a_size != b_size):
         Return(Condition(False))
-    index = Integer(0)
-    size = a.size()
-    for char in a.iterate(Text):
-        with If(index >= size):
-            Break()
-        with If(char != b[index].to(Text)):
+    for index in Range(a_size):
+        with If(a[index].to(Text) != b[index].to(Text)):
             Return(Condition(False))
-        index += 1
     Return(Condition(True))

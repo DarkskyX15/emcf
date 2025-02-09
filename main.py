@@ -1,8 +1,8 @@
 
 from emcf.core import MCF
 from emcf._utils import console
-from emcf.display import say
-from emcf.selector import Selector
+from emcf.v57.display import say
+from emcf.v57.selector import Selector
 from emcf.classing import *
 from emcf.types import *
 from emcf.control import *
