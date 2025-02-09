@@ -4,18 +4,8 @@
 from .types import *
 from .classing import *
 from .control import *
-from ._writers import *
-from ._exceptions import *
-from ._components import builtin_components as builtin_cps
-from ._utils import iterable, console
-from .core import MCF
-from .display import *
 from .functional import *
-from typing import (
-    TypeVar, NewType, Generic, Iterable, Optional, Any, TypeAlias,
-    Type, Annotated, get_args, get_origin
-)
-
+from .display import say
 
 __all__ = [
     'text_to_string',
@@ -23,9 +13,9 @@ __all__ = [
     'string_compare'
 ]
 
-@MCFunction(ArrayList[Text], (Text, ))
+@MCFunction(ArrayList[Text])
 def text_to_string(text: Text):
-    string = ArrayList(Text)
+    string = ArrayList()
     for index in Range(0, text.size()):
         string.append(
             text.substr(index, index + 1)
@@ -35,7 +25,7 @@ def text_to_string(text: Text):
 @MCFunction(Text)
 def string_to_text(string: ArrayList[Text]):
     text = Text()
-    for char in string:
+    for char in string.iterate(Text):
         text.push_back(char)
     Return(text)
 
@@ -45,6 +35,8 @@ def string_compare(a: ArrayList[Text], b: ArrayList[Text]):
         Return(Condition(False))
     size = a.size()
     for index in Range(size):
-        with If(a[index] != b[index]):
-            Return(Condition(False))
+        Return(Condition(False))
+    say(666)
+    #     with If(a[index].to(Text) != b[index].to(Text)):
+    #         Return(Condition(False))
     Return(Condition(True))

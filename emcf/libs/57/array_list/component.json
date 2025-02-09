@@ -1,5 +1,5 @@
 {
-    "namespace":"array_list",
+    "namespace":"al_ops",
     "description": "Infrastructure for ArrayList",
     "credits": "Written by Darksky",
     "version": "r1.0.0"

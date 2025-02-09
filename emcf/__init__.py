@@ -2,8 +2,8 @@
 __all__ = [
     'control',
     'core',
-    'display',
+    'classing',
     'functional',
-    'selector',
-    'types'
+    'types',
+    'types_extension'
 ]

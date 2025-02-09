@@ -15,20 +15,13 @@ from emcf.types_extension import *
 MCF.useConfig({
     "namespace": "test",
     "version": 57,
-    "gc": False
+    "gc": True
 })
 
 def main():
-    val = Float(114.514)
-    val2 = Float(114.114)
-    _map = HashMap({
-        "val": val,
-        "sec": val2
-    })
-    got = _map.get(Float, "sec", Float(0))
-    got += val2
-    _map.set("now", got)
-    say(_map)
+    x = text_to_string(Text("xxxx11111"))
+    y = x[::-1]
+    say(string_compare(x, y))
 
 if __name__ == '__main__':
     main()

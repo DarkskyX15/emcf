@@ -21,9 +21,6 @@ __all__ = [
     'Integer',
     'Float',
     'ArrayList',
-    'Long',
-    'Int',
-    'Byte',
     'Text',
     'HashMap'
 ]
@@ -978,10 +975,20 @@ class Float(MCFVariable):
         Data.storage(MCF.storage).remove(f"mem.{self._mcf_id}")
 
 
-# TODO rewrite to default construct
 # ArrayList Implementation
 
-ElementType = TypeVar("ElementType")
+ElementType = TypeVar("ElementType", bound=MCFVariable)
+
+class _UntypedElement(Generic[ElementType]):
+    
+    def __init__(self):
+        pass
+
+    def to(self, _type: type[ElementType]) -> ElementType:
+        ret_val = _type(init_val=None, void=False)
+        ret_val.collect("cache.type")
+        return ret_val
+
 class _IterationContext(Generic[ElementType]):
     _iter_used: bool
     _control_sig: str
@@ -1002,11 +1009,11 @@ class _IterationContext(Generic[ElementType]):
         self._control_path, self._control_sig = MCF.makeFunction()
         self._main_path, self._main_sig = MCF.makeFunction()
         self._iter_src = src._mcf_id
+        # void gc on src
         self._source = src
         self._index_id = MCF.getFID()
-        self._enter()
     
-    def _enter(self) -> None:
+    def __iter__(self) -> Self:
         # save loop stack
         Data.storage(MCF.storage).modify_set("register").value(r"{}")
         ScoreBoard.to_storage(
@@ -1052,6 +1059,7 @@ class _IterationContext(Generic[ElementType]):
         MCF.forward(self._main_path)
         MCF._context_type.append('loop')
         MCF._last_ctx_type = 'norm'
+        return self
     
     def __next__(self) -> ElementType:
         if self._iter_used:
@@ -1072,105 +1080,38 @@ class _IterationContext(Generic[ElementType]):
         self._iter_used = True
         return self._ret_value
 
-Long = Annotated[Integer, 'long']
-Int = Annotated[Integer, 'int']
-Byte = Annotated[Integer, 'byte']
-
 class ArrayList(Generic[ElementType], MCFVariable):
-    _array_sign: ClassVar[dict[str, str]]
-    _array_suffix: ClassVar[dict[str, str]]
-    _raw_type: type
-    _element_tp: type[MCFVariable] | None
-    _arr_type: str
 
     def __init__(
         self,
-        tp: type[ElementType] | None = None, 
         init_val: 'Iterable[ElementType] | ArrayList[ElementType] | None' = [],
         void: bool = False
     ):
         MCF.useComponent('array_list', built_cps.array_list)
-        self._raw_type = tp
-        if tp is None:
-            self._element_tp = None
-            self._arr_type = 'list'
-        elif get_origin(tp) is Annotated:
-            self._element_tp, self._arr_type = get_args(tp)
-            if self._element_tp is not Integer:
-                console.error(
-                    MCFSyntaxError(
-                        "ArrayList only accepts Annotated on Integer, not"
-                        f" {self._element_tp}."
-                    )
-                )
-                self._element_tp = Integer
-            if self._arr_type not in self._array_sign.keys():
-                console.error(
-                    MCFSyntaxError(
-                        "Annotated meta for Integer can only be one of "
-                        f"{tuple(self._array_sign.keys())}."
-                    )
-                )
-                self._arr_type = 'list'
-        else:
-            self._element_tp = tp
-            self._arr_type = 'list'
-            if not issubclass(tp, MCFVariable):
-                console.error(
-                    MCFTypeError(
-                        "Element type for ArrayList must be a subclass of "
-                        f"MCFVariable, not {tp}."
-                    )
-                )
-                self._element_tp = None
         super().__init__(init_val, void)
     
     def assign(self, value: Iterable[ElementType] | 'ArrayList[ElementType]') -> None:
-        if self._element_tp is None: return
         if isinstance(value, ArrayList):
-            if value._element_tp is not self._element_tp:
-                console.error(
-                    MCFTypeError(
-                        f"Arrays assigned should have same element type,"
-                        f" while one is {self._element_tp},"
-                        f" the other is {value._element_tp}."
-                    )
-                )
-                return
-            if value._arr_type != self._arr_type:
-                console.error(
-                    MCFTypeError(
-                        f"Arrays assigned should have same array type,"
-                        f" while one is {self._arr_type},"
-                        f" the other is {value._arr_type}."
-                    )
-                )
-                return
             Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
                 Data.storage(MCF.storage), f"mem.{value._mcf_id}"
             )
         elif iterable(value):
-            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value(
-                f"[{self._array_sign.get(self._arr_type, '')}]"
-            )
+            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value("[]")
             for element in value:
-                if not isinstance(element, self._element_tp):
+                if not isinstance(element, MCFVariable):
                     console.error(
                         MCFTypeError(
-                            f"Element in iterable is of type {type(element)}"
-                            f", while array requires type {self._element_tp}."
+                            "Element in an iterable can only be a MCFVariable"
+                            f", not {type(element)}."
                         )
                     )
                     break
-                if self._arr_type != 'list':
-                    element: Integer
-                    element.extract("register", self._arr_type)
-                else:
-                    element.move("register")
+                element.move("register")
+                Function(MCF.builtinSign('array_list.wrap')).call()
                 Data.storage(MCF.storage).modify_append(
                     f"mem.{self._mcf_id}"
                 ).via(
-                    Data.storage(MCF.storage), "register"
+                    Data.storage(MCF.storage), "cache.src"
                 )
         else:
             console.error(
@@ -1189,29 +1130,70 @@ class ArrayList(Generic[ElementType], MCFVariable):
         init_val: 'Iterable[ElementType] | ArrayList[ElementType] | None' = [],
         void: bool = False
     ) -> 'ArrayList[ElementType]':
-        return ArrayList(self._raw_type, init_val, void)
+        return ArrayList(init_val, void)
     
     def collect(self, src: str) -> None:
         Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
             Data.storage(MCF.storage), src
         )
 
-    def extract(self, dist: str) -> None:
-        Data.storage(MCF.storage).modify_set(dist).via(
-            Data.storage(MCF.storage), f"mem.{self._mcf_id}"
-        )
+    def extract(
+        self,
+        dist: str,
+        mode: Literal['list', 'long', 'byte', 'int', 'raw']
+    ) -> None:
+        if mode == 'raw':
+            Data.storage(MCF.storage).modify_set(dist).via(
+                Data.storage(MCF.storage), f"mem.{self._mcf_id}"
+            )
+        elif mode == 'list':
+            self.move("cache.src")
+            Data.storage(MCF.storage).modify_set("register").value("[]")
+            Function(MCF.builtinSign('array_list.extract')).call()
+            Data.storage(MCF.storage).modify_set(dist).via(
+                Data.storage(MCF.storage), "register"
+            )
+        elif mode == 'long':
+            self.move("cache.src")
+            Data.storage(MCF.storage).modify_set("register").value("[L;]")
+            Function(MCF.builtinSign('array_list.extract')).call()
+            Data.storage(MCF.storage).modify_set(dist).via(
+                Data.storage(MCF.storage), "register"
+            )
+        elif mode == 'byte':
+            self.move("cache.src")
+            Data.storage(MCF.storage).modify_set("register").value("[B;]")
+            Function(MCF.builtinSign('array_list.extract')).call()
+            Data.storage(MCF.storage).modify_set(dist).via(
+                Data.storage(MCF.storage), "register"
+            )
+        elif mode == 'int':
+            self.move("cache.src")
+            Data.storage(MCF.storage).modify_set("register").value("[I;]")
+            Function(MCF.builtinSign('array_list.extract')).call()
+            Data.storage(MCF.storage).modify_set(dist).via(
+                Data.storage(MCF.storage), "register"
+            )
+        else:
+            console.error(
+                MCFSyntaxError(
+                    f"Invalid extract mode for ArrayList: {mode}."
+                )
+            )
 
     def construct(self, src: str) -> None:
-        Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
+        Data.storage(MCF.storage).modify_set("cache.src").via(
             Data.storage(MCF.storage), src
         )
+        Function(MCF.builtinSign('array_list.construct')).call()
+        self.collect("cache.result")
 
     def macro_construct(
         self,
         slot: str,
         mcf_id: str
     ) -> 'ArrayList[ElementType]':
-        temp = ArrayList(self._raw_type, None, True)
+        temp = ArrayList(None, True)
         Data.storage(MCF.storage).modify_set(f"mem.{mcf_id}", True).via(
             Data.storage(MCF.storage), f"mem.$({slot})"
         )
@@ -1223,10 +1205,6 @@ class ArrayList(Generic[ElementType], MCFVariable):
 
 
     def size(self) -> Integer:
-        if self._element_tp is None:
-            raise NotImplementedError(
-                "Method 'size' of ArrayList[None] is not defined."
-            )
         ret = Integer(None, False)
         Execute().store('result').score(ret._mcf_id, MCF.sb_general).run(
             Data.storage(MCF.storage).get(f"mem.{self._mcf_id}")
@@ -1234,22 +1212,10 @@ class ArrayList(Generic[ElementType], MCFVariable):
         return ret
 
     def append(self, element: ElementType) -> None:
-        # invalid type
-        if self._element_tp is None:
-            raise NotImplementedError(
-                "Method 'append' of ArrayList[None] is not defined."
-            )
-        # not the same type
-        if type(element) is not self._element_tp:
-            console.error(
-                MCFTypeError(
-                    f"ArrayList here requires type {self._element_tp}."
-                )
-            )
-            return
         element.move("register")
+        Function(MCF.builtinSign('array_list.wrap')).call()
         Data.storage(MCF.storage).modify_append(f"mem.{self._mcf_id}").via(
-            Data.storage(MCF.storage), "register"
+            Data.storage(MCF.storage), "cache.src"
         )
 
     def insert(
@@ -1257,17 +1223,6 @@ class ArrayList(Generic[ElementType], MCFVariable):
         index: IntegerConvertible,
         element: ElementType
     ) -> None:
-        if self._element_tp is None:
-            raise NotImplementedError(
-                "Method 'insert' of ArrayList[None] is not defined."
-            )
-        if type(element) is not self._element_tp:
-            console.error(
-                MCFTypeError(
-                    f"ArrayList requires type {self._element_tp}."
-                )
-            )
-            return
         # store index
         if isinstance(index, int):
             Data.storage(MCF.storage).modify_set("call.m0").value(str(index))
@@ -1289,30 +1244,18 @@ class ArrayList(Generic[ElementType], MCFVariable):
         )
 
     def prepend(self, element: ElementType) -> None:
-        # invalid type
-        if self._element_tp is None:
-            raise NotImplementedError(
-                "Method 'prepend' of ArrayList[None] is not defined."
-            )
-        # not the same type
-        if type(element) is not self._element_tp:
-            console.error(
-                MCFTypeError(
-                    f"ArrayList here requires type {self._element_tp}."
-                )
-            )
-            return
         element.move("register")
+        Function(MCF.builtinSign('array_list.wrap')).call()
         Data.storage(MCF.storage).modify_prepend(f"mem.{self._mcf_id}").via(
-            Data.storage(MCF.storage), "register"
+            Data.storage(MCF.storage), "cache.src"
         )
 
-    def pop(self, index: IntegerConvertible = -1) -> ElementType:
+    def pop(
+        self,
+        _type: type[ElementType],
+        index: IntegerConvertible = -1
+    ) -> ElementType:
         """Pop last element by default."""
-        if self._element_tp is None:
-            raise NotImplementedError(
-                "Method 'pop' of ArrayList[None] is not defined."
-            )
         # export index on m0
         if isinstance(index, int):
             Data.storage(MCF.storage).modify_set("call.m0").value(str(index))
@@ -1330,7 +1273,7 @@ class ArrayList(Generic[ElementType], MCFVariable):
             Data.storage(MCF.storage), "call"
         )
         # create return value
-        ret_value = self._element_tp(init_val=None, void=False)
+        ret_value = _type(init_val=None, void=False)
         ret_value.collect("register")
         return ret_value
     
@@ -1341,7 +1284,7 @@ class ArrayList(Generic[ElementType], MCFVariable):
         self.collect("register")
     
     def __add__(self, src: 'ArrayList[ElementType]') -> 'ArrayList[ElementType]':
-        temp = ArrayList(self._raw_type, self)
+        temp = ArrayList(self)
         temp.extend(src)
         return temp
 
@@ -1350,7 +1293,7 @@ class ArrayList(Generic[ElementType], MCFVariable):
         return self
 
     @overload
-    def __getitem__(self, index: IntegerConvertible) -> ElementType: ...
+    def __getitem__(self, index: IntegerConvertible) -> _UntypedElement[ElementType]: ...
 
     @overload
     def __getitem__(self, _slice: slice) -> 'ArrayList[ElementType]': ...
@@ -1358,29 +1301,21 @@ class ArrayList(Generic[ElementType], MCFVariable):
     def __getitem__(
         self,
         index_or_slice: 'IntegerConvertible | slice'
-    ) -> 'ElementType | ArrayList[ElementType]':
-        if self._element_tp is None:
-            raise NotImplementedError(
-                "Method '__getitem__' of ArrayList[None] is not defined."
-            )
+    ) -> Union['ArrayList[ElementType]', _UntypedElement[ElementType]]:
         if isinstance(index_or_slice, int):
             Data.storage(MCF.storage).modify_set("call.m0").value(str(index_or_slice))
             Data.storage(MCF.storage).modify_set("call.m1").value(f'"{self._mcf_id}"')
             Function(MCF.builtinSign('array_list.at')).with_args(
                 Data.storage(MCF.storage), "call"
             )
-            ret_val = self._element_tp(init_val=None, void=False)
-            ret_val.collect("register")
-            return ret_val
+            return _UntypedElement()
         elif isinstance(index_or_slice, Integer):
             index_or_slice.move("call.m0")
             Data.storage(MCF.storage).modify_set("call.m1").value(f'"{self._mcf_id}"')
             Function(MCF.builtinSign('array_list.at')).with_args(
                 Data.storage(MCF.storage), "call"
             )
-            ret_val = self._element_tp(init_val=None, void=False)
-            ret_val.collect("register")
-            return ret_val
+            return _UntypedElement()
         elif isinstance(index_or_slice, slice):
             # validate args
             def validate_args(
@@ -1430,38 +1365,23 @@ class ArrayList(Generic[ElementType], MCFVariable):
                 )
             # run component
             self.move("cache.src")
-            Data.storage(MCF.storage).modify_set("register").value(
-                f"[{self._array_sign.get(self._arr_type, '')}]"
-            )
+            Data.storage(MCF.storage).modify_set("register").value("[]")
             Function(MCF.builtinSign('array_list.slice')).call()
             # collect ret_val
-            ret_val = ArrayList(self._raw_type, None, False)
+            ret_val = ArrayList(None, False)
             ret_val.collect("register")
             return ret_val
         else:
             console.error(
                 MCFTypeError(
-                    f"Invalid argument for get item operation: {index_or_slice},"
+                    f"Invalid argument for __getitem__ operation: {index_or_slice},"
                     "argument must be an IntegerConvertible or a slice."
                 )
             )
+            return _UntypedElement()
 
-    def __iter__(self) -> _IterationContext[ElementType]:
-        if self._element_tp is None:
-            raise NotImplementedError(
-                "Method '__iter__' of ArrayList[None] is not defined."
-            )
-        return _IterationContext(self, self._element_tp)
-
-ArrayList._array_sign = {
-    'byte': 'B;',
-    'int': 'I;',
-    'long': 'L;'
-}
-ArrayList._array_suffix = {
-    'byte': 'b',
-    'long': 'l'
-}
+    def iterate(self, _type: type[ElementType]) -> _IterationContext[ElementType]:
+        return _IterationContext(self, _type)
 
 
 # Static String Implementation -> Text
@@ -1712,7 +1632,9 @@ class HashMap(MCFVariable):
     def macro_construct(slot: str, mcf_id: str) -> 'HashMap':
         temp = HashMap(init_val=None, void=True)
         temp._mcf_id = mcf_id
-        temp.collect(f"mem.$({slot})")
+        Data.storage(MCF.storage).modify_set(f"mem.{mcf_id}", True).via(
+            Data.storage(MCF.storage), f"mem.$({slot})"
+        )
         return temp
 
     def rm(self) -> None:

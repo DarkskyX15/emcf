@@ -15,6 +15,8 @@ __all__ = [
     'ConditionRef',
     'IntegerRef',
     'FloatRef',
+    'TextRef',
+    'ArrayListRef',
     'MCFunction',
     'Return'
 ]
@@ -35,6 +37,8 @@ class Ref:
 ConditionRef: TypeAlias = Annotated[Condition, Ref]
 IntegerRef: TypeAlias = Annotated[Integer, Ref]
 FloatRef: TypeAlias = Annotated[Float, Ref]
+TextRef: TypeAlias = Annotated[Text, Ref]
+ArrayListRef: TypeAlias = Annotated[ArrayList, Ref]
 
 # default argument value is not supported at present
 
@@ -104,17 +108,14 @@ class MCFunction(Generic[Ret]):
     _ref_args: dict[str, MCFVariable]
     _collected: list[MCFVariable]
     _export_func: Callable
-    _extra_args: tuple[Any]
 
     def __init__(
         self,
-        ret_type: type[Ret] = FakeNone,
-        extra_args: tuple[Any] = ()
+        ret_type: type[Ret] = FakeNone
     ):
         self._ret_addr = MCF.getFID()
         self._exported = False
         self._ret_type = ret_type
-        self._extra_args = extra_args
         self._input_addr = []
         self._context = {}
         self._ref_args = {}
@@ -289,12 +290,7 @@ class MCFunction(Generic[Ret]):
                 Data.storage(MCF.storage), "call"
             )
 
-            # TODO change to default construct
-            ret_val = self._ret_type(
-                *(self._extra_args),
-                init_val=None,
-                void=False
-            )
+            ret_val = self._ret_type(init_val=None, void=False)
             if isinstance(ret_val, FakeNone):
                 ret_val = None
                 pop_stack()       # 恢复上下文

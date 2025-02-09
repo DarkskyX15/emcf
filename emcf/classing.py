@@ -6,7 +6,7 @@ from .functional import push_stack, new_stack, pop_stack
 from .core import MCF
 from ._exceptions import MCFSyntaxError, MCFValueError, MCFTypeError
 from typing import ( 
-    Type, Self, TypeVarTuple, TypeVar, Any, Callable, get_origin, get_args,
+    Self, TypeVarTuple, TypeVar, Any, Callable, get_origin, get_args,
     Annotated
 )
 from functools import wraps
@@ -17,9 +17,9 @@ __all__ = [
 ]
 
 class MetaInfo:
-    cls: Type
+    cls: type
     cls_name: str
-    name_type_map: dict[str, Type]
+    name_type_map: dict[str, type]
     name_id_map: dict[str, str]
     name_shadow_map: dict[str, MCFVariable]
     exported_map: dict[str, dict[str, MCFVariable]]
@@ -27,9 +27,9 @@ class MetaInfo:
 
     def __init__(
         self,
-        cl: Type,
+        cl: type,
         cn: str,
-        ntm: dict[str, Type],
+        ntm: dict[str, type],
         nim: dict[str, str],
     ):
         self.cls = cl
@@ -51,7 +51,7 @@ def IgnoredMethod(target: Mtd) -> Mtd:
 # method do not support Ref at present
 # __init__ function should be strictly formatted
 
-Ret = TypeVar("ReturnType")
+Ret = TypeVar("ReturnType", bound=MCFVariable)
 Args = TypeVarTuple("Args")
 class MCFClass(MCFVariable):
     """MCF的类支持，继承自MCFVariable"""
@@ -59,11 +59,10 @@ class MCFClass(MCFVariable):
 
     def __init__(
         self,
-        cls: Type,
+        cls: type,
         args: tuple[MCFVariable],
         kwargs: dict[str, MCFVariable],
-        constructor: Callable[..., None],
-        **init_args: tuple
+        constructor: Callable[..., None]
     ):
         """初始化一个自定义类。"""
         init_val = kwargs.pop("init_val", 'val')
@@ -107,7 +106,6 @@ class MCFClass(MCFVariable):
         def open_mem(out_self: 'MCFClass'):
             out_self._meta.name_shadow_map = {}
             for name, tp in out_self._meta.name_type_map.items():
-                args = init_args.get(name, ())
                 fid = out_self._meta.name_id_map[name]
                 value: MCFVariable = tp(*args, init_val=None, void=True)
                 value._mcf_id = fid
@@ -117,7 +115,7 @@ class MCFClass(MCFVariable):
 
         def decorate(
             out_self: 'MCFClass',
-            cls: Type,
+            cls: type,
             method: Callable[[*Args], Ret],
             func_detail: tuple[str, str],
             body_detail: tuple[str, str]
@@ -129,7 +127,6 @@ class MCFClass(MCFVariable):
             else:
                 arg_count = method.__code__.co_argcount
             ret_tp = method.__annotations__.get("return", None)
-            extra_args = ()
             if ret_tp is None:
                 console.error(
                     MCFSyntaxError(
@@ -142,7 +139,7 @@ class MCFClass(MCFVariable):
                 origin = get_origin(ret_tp)
                 if origin is not None:
                     if origin is Annotated:
-                        ret_tp, extra_args = get_args(ret_tp)
+                        ret_tp = get_args(ret_tp)[0]
                     else:
                         ret_tp = origin
                 elif ret_tp == cls_meta.cls_name:
@@ -191,7 +188,7 @@ class MCFClass(MCFVariable):
                         )
                         arg_check = False
                 if not arg_check:
-                    ret_val = ret_tp(*extra_args, init_val=None, void=True)
+                    ret_val = ret_tp(init_val=None, void=True)
                     ret_val._gc_sign = 'shadow'
                     return ret_val
 
@@ -261,7 +258,7 @@ class MCFClass(MCFVariable):
                 if issubclass(ret_tp, FakeNone):
                     ret_val = None
                 else:
-                    ret_val = ret_tp(*extra_args, init_val=None, void=False)
+                    ret_val = ret_tp(init_val=None, void=False)
                     ret_val.collect("ret_val")
                     MCF.addContext(ret_val)
 
@@ -307,7 +304,7 @@ class MCFClass(MCFVariable):
 
         def resolve_method(
             out_self: 'MCFClass',
-            cls: Type,
+            cls: type,
             decorator: Callable 
         ):
             for name, method in cls.__dict__.items():
@@ -420,7 +417,9 @@ class MCFClass(MCFVariable):
             shadow.move(f"mem.{self._mcf_id}.{shadow._mcf_id}")
 
     def __construct__(self) -> None:
-        """派生类应实现构造函数"""
+        """派生类应实现默认构造函数，若需做构造函数重载，则应在派生类的初始化方法中
+        判断参数类型和数量等条件，并向MCFClass的初始化方法中传入不同的constructor。
+        """
         raise NotImplementedError
 
     def assign(self, value: Self) -> None:
