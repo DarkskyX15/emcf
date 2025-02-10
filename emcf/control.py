@@ -4,9 +4,9 @@ from ._utils import console
 from ._exceptions import MCFTypeError, MCFSyntaxError, MCFValueError
 from .types import Condition, Integer, IntegerConvertible
 from ._writers import *
-from ._writers import _Collector, _MultiCollector
+from ._writers import _MultiCollector
 from traceback import extract_stack
-from typing import TextIO, Self, Callable, Any
+from typing import Self, Callable, Any
 import os
 
 __all__ = [

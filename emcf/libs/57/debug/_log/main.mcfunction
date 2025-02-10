@@ -1,0 +1,1 @@
+$tellraw @a[tag=dev] {"type":"translatable","translate":"emcf.debug.log","fallback":"[%s] Debug.log: %s","with":[{"type":"text","text":"DEBUG","color":"#39C5BB"},{"type":"text","text":"$(m0)","color":"#98D5FE"}]}

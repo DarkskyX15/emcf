@@ -23,9 +23,10 @@ __all__ = [
     'ReturN',
     'Say',
     'Tag',
+    'TellRaw',
     'IntegerVariableTypes',
     'NumericVariableTypes',
-    'FloatingPointVariableTypes'
+    'FloatingPointVariableTypes',
 ]
 
 class _Collector:
@@ -595,3 +596,12 @@ class Tag:
             f"tag {self._select} remove {tag}\n", self._macro
         )
 
+def TellRaw(
+    compiled_selector: str,
+    text_component: str,
+    macro: bool = False
+) -> None:
+    MCF.write(
+        f"tellraw {compiled_selector} {text_component}\n",
+        macro
+    )

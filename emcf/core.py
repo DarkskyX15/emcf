@@ -211,6 +211,7 @@ scoreboard players set {MCF.BUFFER5} {self.sb_sys} 0
 scoreboard players set {MCF.BUFFER6} {self.sb_sys} 0
 scoreboard players set {MCF.LOOP_EXIT} {self.sb_sys} 0
 scoreboard players set {MCF.LOOP_CONT} {self.sb_sys} 0
+forceload add 0 0
 """
             )
         self._io_history.append(f"{self.wk_root}/main.mcfunction")

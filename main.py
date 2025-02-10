@@ -1,14 +1,9 @@
 
 from emcf.core import MCF
-from emcf._utils import console
-from emcf.v57.display import say
-from emcf.v57.selector import Selector
-from emcf.classing import *
+import emcf.v57.debug as debug
 from emcf.types import *
 from emcf.control import *
-from emcf._writers import *
 from emcf.functional import *
-from emcf.classing import *
 from emcf.types_extension import *
 
 
@@ -19,9 +14,10 @@ MCF.useConfig({
 })
 
 def main():
-    x = text_to_string(Text("01011"))
-    y = x[::-1]
-    say(string_compare(x, y))
+    t1 = Text('"原神，启动"')
+    t2 = Text("'哈哈'")
+    arr = ArrayList([t1, t2])
+    debug.log(arr)
 
 if __name__ == '__main__':
     main()

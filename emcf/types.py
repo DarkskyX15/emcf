@@ -8,9 +8,8 @@ from ._exceptions import *
 from ._writers import *
 from ._components import builtin_components as built_cps
 from typing import (
-    TypeAlias, Any, Union, TextIO, Self, Literal, Iterable,
-    Generic, TypeVar, Annotated, get_origin, get_args,
-    ClassVar, overload, Optional
+    TypeAlias, Any, Union, Self, Literal, Iterable,
+    Generic, TypeVar, overload, Optional
 )
 
 
@@ -1517,19 +1516,12 @@ class Text(MCFVariable):
         )
         return ret_
 
-    def push_back(self, text: TextConvertible) -> None:
+    def concat(self, text: TextConvertible) -> None:
         if isinstance(text, str):
             text = text.replace('"', r'\"')
             Data.storage(MCF.storage).modify_set("call.m1").value(f'"{text}"')
         elif isinstance(text, Text):
             text.move("call.m1")
-            Execute().condition('if').data(
-                Data.storage(MCF.storage), 'call{m1:"\'"}'
-            ).run(
-                Data.storage(MCF.storage).modify_set("call.m1").value(
-                    '"\\\\\'"'
-                )
-            )
         else:
             console.error(
                 MCFTypeError(
@@ -1538,10 +1530,17 @@ class Text(MCFVariable):
                 )
             )
         self.move("call.m0")
-        Function(MCF.builtinSign('string.combine')).with_args(
-            Data.storage(MCF.storage), "call"
-        )
+        Function(MCF.builtinSign('string.combine')).call()
         self.collect("register")
+
+    def __add__(self, other: TextConvertible) -> 'Text':
+        temp = Text(self)
+        temp.concat(other)
+        return temp
+    
+    def __iadd__(self, other: TextConvertible) -> 'Text':
+        self.concat(other)
+        return self
 
     def __ne__(self, text: TextConvertible) -> Condition:
         result = Condition(None, False)

@@ -25,7 +25,7 @@ def text_to_string(text: Text):
 def string_to_text(string: ArrayList[Text]):
     text = Text()
     for char in string.iterate(Text):
-        text.push_back(char)
+        text.concat(char)
     Return(text)
 
 @MCFunction(Condition)
