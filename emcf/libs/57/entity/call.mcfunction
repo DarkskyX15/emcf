@@ -1,0 +1,1 @@
+$execute as $(m0) run function $(m1)

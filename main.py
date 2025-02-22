@@ -5,6 +5,7 @@ from emcf.types import *
 from emcf.control import *
 from emcf.functional import *
 from emcf.types_extension import *
+from emcf._writers import *
 
 
 MCF.useConfig({
@@ -14,10 +15,9 @@ MCF.useConfig({
 })
 
 def main():
-    t1 = Text('"原神，启动"')
-    t2 = Text("'哈哈'")
-    arr = ArrayList([t1, t2])
-    debug.log(arr)
+    block = Block("~ ~-1 ~")
+    block.query_state()
+    debug.log(block)
 
 if __name__ == '__main__':
     main()

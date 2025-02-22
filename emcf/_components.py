@@ -77,5 +77,22 @@ class BuiltinComponents:
             "gen": MCF.GENERAL
         }
 
+        self.entity = {
+            "st": MCF.storage,
+            "bd": MCF.sb_sys,
+            "gen": MCF.GENERAL,
+            "cst": MCF.CALC_CONST,
+            "buf1": MCF.BUFFER1,
+            "buf2": MCF.BUFFER2,
+            "buf3": MCF.BUFFER3
+        }
+
+        self.block = {
+            "st": MCF.storage,
+            "nsp": MCF._namespace,
+            "bd": MCF.sb_sys,
+            "gen": MCF.GENERAL
+        }
+
 builtin_components = BuiltinComponents()
 MCF.initializeHelper(builtin_components.initialize)

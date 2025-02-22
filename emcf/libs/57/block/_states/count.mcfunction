@@ -1,0 +1,11 @@
+execute if predicate __nsp__:bp/p0 run scoreboard players add __gen__ __bd__ 1
+execute if predicate __nsp__:bp/p1 run scoreboard players add __gen__ __bd__ 2
+execute if predicate __nsp__:bp/p2 run scoreboard players add __gen__ __bd__ 4
+execute if predicate __nsp__:bp/p3 run scoreboard players add __gen__ __bd__ 8
+execute if predicate __nsp__:bp/p4 run scoreboard players add __gen__ __bd__ 16
+execute if predicate __nsp__:bp/p5 run scoreboard players add __gen__ __bd__ 32
+execute if predicate __nsp__:bp/p6 run scoreboard players add __gen__ __bd__ 64
+execute if predicate __nsp__:bp/p7 run scoreboard players add __gen__ __bd__ 128
+execute if predicate __nsp__:bp/p8 run scoreboard players add __gen__ __bd__ 256
+execute if predicate __nsp__:bp/p9 run scoreboard players add __gen__ __bd__ 512
+execute if predicate __nsp__:bp/p10 run scoreboard players add __gen__ __bd__ 1024

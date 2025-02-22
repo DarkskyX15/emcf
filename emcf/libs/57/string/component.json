@@ -2,5 +2,6 @@
     "namespace":"string",
     "description": "Infrastructure for string type. v57",
     "credits": "written by Darksky",
-    "version": "r1.0.1"
+    "version": "r1.0.1",
+    "onInitialize": "set_forceload"
 }

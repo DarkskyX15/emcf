@@ -1,0 +1,19 @@
+{
+    "namespace":"block",
+    "description": "Infrastructure for Block",
+    "credits": "Written by Darksky",
+    "version": "r1.0.0",
+    "onInitialize": "block_cst",
+    "static": [
+        {
+            "type": "predicate",
+            "src": "bp",
+            "dist": "bp"
+        },
+        {
+            "type": "tags.block",
+            "src": "_tags",
+            "dist": ""
+        }
+    ]
+}

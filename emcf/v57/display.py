@@ -23,4 +23,4 @@ def say(obj: Any, target: Selector | None = None) -> None:
                 Data.storage(MCF.storage), "call"
             )
         else:
-            Execute().aS(target.select()).run(Say(str(obj)))
+            Execute().As(target.select()).run(Say(str(obj)))

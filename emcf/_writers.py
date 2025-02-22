@@ -3,7 +3,10 @@
 """
 
 from .core import MCF
-from typing import Any, Literal, TypeAlias, Self, NewType, Callable, Generic
+from typing import (
+    Any, Literal, TypeAlias, Self, NewType,
+    Callable, Generic, Optional
+)
 
 NumericVariableTypes: TypeAlias = Literal[
     'int', 'float', 'short', 'long', 'double', 'byte'
@@ -46,6 +49,8 @@ class _MultiCollector:
 
 
 Execute = NewType("Execute", None)
+
+# TODO old format rewrite
 
 _ExecuteStoreContext = NewType("_ExecuteStoreContext", None)
 
@@ -191,6 +196,50 @@ class _ExecuteConditionContext:
         self._source._context_feedback(' '.join(contents))
         return self._source
 
+
+class _ExecuteSubCommand:
+    _source: 'Execute'
+    _contents: list[str]
+
+    def __init__(self, source: 'Execute', built: Optional[str] = None):
+        self._source = source
+        self._contents = []
+        if built is not None:
+            self._contents.append(built)
+
+    def append(self, *sub_commands: str) -> None:
+        self._contents.extend(sub_commands)
+
+    def end_context(self) -> 'Execute':
+        self._source._context_feedback(' '.join(self._contents))
+        return self._source
+
+class _ExecutePositionedContext(_ExecuteSubCommand):
+    
+    def __init__(self, source, built = None):
+        super().__init__(source, built)
+    
+    def location(self, position: str) -> 'Execute':
+        """`positioned <position>`"""
+        self.append(position)
+        return self.end_context()
+    
+    def entity(self, compiled_selector: str) -> 'Execute':
+        """`positioned as <selector>`"""
+        self.append(compiled_selector)
+        return self.end_context()
+    
+    def height_map(
+        self,
+        height_map_id: Literal[
+            'motion_blocking', 'motion_blocking_no_leaves',
+            'ocean_floor', 'world_surface'
+        ]
+    ) -> 'Execute':
+        """`positioned over <height_map>`"""
+        self.append(height_map_id)
+        return self.end_context()
+
 class Execute:
     """execute系列命令的封装"""
 
@@ -214,11 +263,19 @@ class Execute:
         """创建一个储存子命令，等价于`store (result|success) ...`"""
         return _ExecuteStoreContext(self, f"store {mode}")
 
-    def aS(self, compiled_selector: str) -> Execute:
+    def As(self, compiled_selector: str) -> Execute:
         self.sub_commands.append(
             f"as {compiled_selector}"
         )
         return self
+
+    def positioned(
+        self,
+        source: Literal['given', 'as', 'over']
+    ) -> _ExecutePositionedContext:
+        if source == 'given':
+            return _ExecutePositionedContext(self)
+        return _ExecutePositionedContext(self, source)
 
     def _context_feedback(self, sub_command: str) -> None:
         self.sub_commands.append(sub_command)

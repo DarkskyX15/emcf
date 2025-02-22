@@ -1,0 +1,1 @@
+data modify storage __st__ register set from entity @s UUID

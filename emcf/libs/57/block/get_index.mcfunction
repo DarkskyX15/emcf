@@ -1,0 +1,1 @@
+$data modify storage __st__ cache.result.block_states.$(m1) set from storage __st__ constants.bstates[$(m2)].$(m1)[$(m0)]

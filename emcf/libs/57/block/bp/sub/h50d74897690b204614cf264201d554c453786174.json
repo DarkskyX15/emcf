@@ -1,0 +1,1 @@
+{"condition":"minecraft:any_of","terms":[{"condition":"minecraft:location_check","predicate":{"block":{"blocks":"#__nsp__:all_blocks","state":{"pickles":"3"}}}},{"condition":"minecraft:location_check","predicate":{"block":{"blocks":"#__nsp__:all_blocks","state":{"pickles":"4"}}}}]}

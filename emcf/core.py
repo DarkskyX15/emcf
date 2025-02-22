@@ -2,15 +2,24 @@
 from ._database import *
 from ._exceptions import MCFComponentError
 from ._utils import getMultiPaths, console
-from typing import TypeAlias, Any, Literal, TextIO, Callable, Protocol, TypeVarTuple
+from typing import (
+    TypeAlias, Any, Literal, TextIO, Callable, Protocol, TypeVarTuple,
+    TypedDict, Required
+)
 import os, random, atexit
 
-EMCF = "a0.2.0"
+EMCF = "a0.2.2"
 
 GCSign: TypeAlias = Literal['shadow', 'norm', 'none']
-ConfigMap: TypeAlias = dict[Literal[
-    "namespace", "version", "dist", "prefix", "gc", "log"
-], Any]
+
+class ConfigMap(TypedDict, total=False):
+    namespace: Required[str]
+    version: Required[Literal[57]]
+    dist: str
+    prefix: str
+    gc: bool
+    log: bool
+    
 ContextType: TypeAlias = Literal[
     'norm', 'loop', 'if', 'elif', 'else'
 ]
@@ -88,7 +97,7 @@ class MCFCore:
 
     def __init__(self):
         self._operation_stack = []
-        self._mcf_version = 1204
+        self._mcf_version = 57
         self._dist = "./build"
         self.wk_root = "./build/default/functions"
         self._namespace = "default"
@@ -137,6 +146,7 @@ data remove storage {self.storage} loop_stack
 data remove storage {self.storage} register
 data remove storage {self.storage} cache
 data remove storage {self.storage} mem
+data remove storage {self.storage} constants
 """
         , macro=False)
         MCF.rewind()
@@ -176,6 +186,7 @@ data remove storage {self.storage} mem
         # make file structure
         path_build = f"{self._dist}/{self._namespace}/function/emcf"
         self.wk_root = f"{self._dist}/{self._namespace}/function"
+        self.database._mcf_path = os.path.join(self._dist, self._namespace)
         os.makedirs(path_build, exist_ok=True)
         files, _ = getMultiPaths(self.wk_root)
         for file in files:
@@ -183,6 +194,9 @@ data remove storage {self.storage} mem
 
         # file io
         self._io_ptr = f"{self.wk_root}/main.mcfunction"
+
+        # component initialize entrance
+        self._cp_init_path, init_sig = self.makeFunction()
 
         with open(self._io_ptr, 'a', encoding='utf-8') as file:
             file.write(f"# {self._prefix} \n")
@@ -199,6 +213,7 @@ data modify storage {self.storage} loop_stack set value []
 data modify storage {self.storage} register set value ""
 data modify storage {self.storage} cache set value """ + r"{}" + f"""
 data modify storage {self.storage} mem set value """ + r"{}" + f"""
+data modify storage {self.storage} constants set value """ + r"{}" + f"""
 scoreboard players set {MCF.GENERAL} {self.sb_sys} 0
 scoreboard players set {MCF.CALC_CONST} {self.sb_sys} 0
 scoreboard players set {MCF.COND_LAST} {self.sb_sys} 0
@@ -211,7 +226,7 @@ scoreboard players set {MCF.BUFFER5} {self.sb_sys} 0
 scoreboard players set {MCF.BUFFER6} {self.sb_sys} 0
 scoreboard players set {MCF.LOOP_EXIT} {self.sb_sys} 0
 scoreboard players set {MCF.LOOP_CONT} {self.sb_sys} 0
-forceload add 0 0
+function {init_sig}
 """
             )
         self._io_history.append(f"{self.wk_root}/main.mcfunction")
@@ -275,7 +290,10 @@ forceload add 0 0
     def exportComponents(self) -> None:
         self._final_export = True
         console.info("Exporting used components...")
-        self.database.writeComponents(self._merge_signatures)
+        self.database.writeComponents(
+            self._merge_signatures,
+            self._cp_init_path
+        )
 
     def write(self, command_lines: str, macro: bool) -> None:
         """向当前函数文件内写入命令"""
