@@ -5,8 +5,8 @@ from .types import *
 from ._writers import *
 from ._utils import console
 from typing import (
-    Callable, TypeVar, TypeVarTuple, Generic,
-    Any, get_origin, TypeAlias, Annotated
+    Callable, TypeVar, Generic,
+    Any, get_origin, TypeAlias, Annotated, ParamSpec
 )
 from functools import wraps
 
@@ -93,8 +93,8 @@ def pop_stack() -> None:
         var.collect(f"frame.m{index}")
         index += 1
 
-Ret = TypeVar('Ret')
-Args = TypeVarTuple('Args')
+Ret = TypeVar('Ret', bound=MCFVariable)
+_P = ParamSpec('_P')
 class MCFunction(Generic[Ret]):
     _entry_path: str
     _entry_sig: str
@@ -169,7 +169,7 @@ class MCFunction(Generic[Ret]):
                 return False
         return True
 
-    def __call__(self, func: Callable[[*Args], None]) -> Callable[[*Args], Ret]:
+    def __call__(self, func: Callable[_P, None]) -> Callable[_P, Ret]:
 
         def early_exit():
             if self._ret_type is FakeNone:
@@ -179,7 +179,7 @@ class MCFunction(Generic[Ret]):
             return result
 
         @wraps(func)
-        def wrapper(*args: *Args) -> Ret:
+        def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> Ret:
             # type check
             check_pass = True
             size_args = len(args)

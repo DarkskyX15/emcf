@@ -22,8 +22,11 @@ __all__ = [
     'ArrayList',
     'Text',
     'HashMap',
-    'Entity',
-    'Block'
+    'TextConvertible',
+    'ConditionConvertible',
+    'IntegerConvertible',
+    'FloatConvertible',
+    'HashMapConvertible'
 ]
 
 
@@ -108,6 +111,8 @@ class MCFVariable:
     def rm(self):
         """写清除指令，但不将自身移出上下文"""
         raise NotImplementedError
+
+    def to_text(self) -> 'Text': ...
 
 
 # FakeNone
@@ -207,7 +212,7 @@ class Condition(MCFVariable):
             src, self._mcf_id, MCF.sb_general, 1.0
         )
 
-    def And(self, value: ConditionConvertible) -> 'Condition':
+    def _and(self, value: ConditionConvertible) -> 'Condition':
         """与另一`Condition`或`bool`做逻辑与操作，返回新布尔值"""
         temp = Condition(self)
         if isinstance(value, bool):
@@ -235,7 +240,7 @@ class Condition(MCFVariable):
             )
         return temp
 
-    def Or(self, value: ConditionConvertible) -> 'Condition':
+    def _or(self, value: ConditionConvertible) -> 'Condition':
         """与另一`Condition`或`bool`做逻辑或操作，返回新布尔值"""
         temp = Condition(self)
         if isinstance(value, bool):
@@ -258,14 +263,20 @@ class Condition(MCFVariable):
                 value
             )
         return temp
+    
+    def __and__(self, value: ConditionConvertible) -> 'Condition':
+        return self._and(value)
+    
+    def __or__(self, value: ConditionConvertible) -> 'Condition':
+        return self._or(value)
 
-    def Not(self) -> 'Condition':
+    def __invert__(self) -> 'Condition':
         """返回值与自身逻辑非后值一致的新布尔值"""
         temp = Condition(self)
         self._not(temp._mcf_id)
         return temp
 
-    def Reverse(self) -> None:
+    def invert(self) -> None:
         """对自身做逻辑非，无返回值"""
         self._not(self._mcf_id)
 
@@ -1419,6 +1430,7 @@ class Text(MCFVariable):
     
     def assign(self, value: TextConvertible) -> None:
         if isinstance(value, str):
+            value = value.replace('\\', '\\\\')
             value = value.replace('"', r'\"')
             Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value(
                 f'"{value}"'
@@ -1520,6 +1532,7 @@ class Text(MCFVariable):
 
     def concat(self, text: TextConvertible) -> None:
         if isinstance(text, str):
+            text = text.replace('\\', '\\\\')
             text = text.replace('"', r'\"')
             Data.storage(MCF.storage).modify_set("call.m1").value(f'"{text}"')
         elif isinstance(text, Text):
@@ -1548,6 +1561,7 @@ class Text(MCFVariable):
         result = Condition(None, False)
         self.move("register")
         if isinstance(text, str):
+            text = text.replace('\\', '\\\\')
             text = text.replace('"', r'\"')
             Data.storage(MCF.storage).modify_set("cache.src").value(
                 f'"{text}"'
@@ -1574,7 +1588,7 @@ class Text(MCFVariable):
 
     def __eq__(self, text: TextConvertible) -> Condition:
         result = self.__ne__(text)
-        result.Reverse()
+        result.invert()
         return result
 
 
@@ -1594,7 +1608,7 @@ class HashMap(MCFVariable):
     
     def assign(self, value: HashMapConvertible) -> None:
         if isinstance(value, dict):
-            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value(r"{}")
+            Data.storage(MCF.storage).modify_set(f'mem.{self._mcf_id}').value(r"{}")
             for key, value in value.items():
                 if not isinstance(value, MCFVariable):
                     console.error(
@@ -1605,14 +1619,17 @@ class HashMap(MCFVariable):
                     break
                 value.move("register")
                 if isinstance(key, str):
+                    key = key.replace('\\', r'\\\\')
+                    key = key.replace('"', r'\"')
                     Data.storage(MCF.storage).modify_set(
-                        f"mem.{self._mcf_id}.{key}"
+                        f'mem.{self._mcf_id}."{key}"'
                     ).via(
                         Data.storage(MCF.storage), f"register"
                     )
                 elif isinstance(key, Text):
                     Data.storage(MCF.storage).modify_set("call.m0").value(f'"{self._mcf_id}"')
                     key.move("call.m1")
+                    Function(MCF.builtinSign('hash_map.norm_str')).call()
                     Function(MCF.builtinSign('hash_map.key_pair')).with_args(
                         Data.storage(MCF.storage), "call"
                     )
@@ -1647,7 +1664,7 @@ class HashMap(MCFVariable):
         )
 
     def construct(self, src: str) -> None:
-        self.construct(src)
+        self.collect(src)
 
     @staticmethod
     def macro_construct(slot: str, mcf_id: str) -> 'HashMap':
@@ -1687,11 +1704,12 @@ class HashMap(MCFVariable):
         default.move("register")
         Data.storage(MCF.storage).modify_set("call.m0").value(f'"{self._mcf_id}"')
         if isinstance(key, str):
+            key = key.replace('\\', '\\\\')
+            key = key.replace('"', r'\"')
             Data.storage(MCF.storage).modify_set("call.m1").value(f'"{key}"')
         elif isinstance(key, Text):
-            Data.storage(MCF.storage).modify_set("call.m1").via(
-                Data.storage(MCF.storage), f"mem.{key._mcf_id}"
-            )
+            key.move("call.m1")
+            Function(MCF.builtinSign('hash_map.norm_str')).call()
         else:
             console.error(
                 MCFTypeError(
@@ -1717,14 +1735,15 @@ class HashMap(MCFVariable):
             return
         value.move("register")
         if isinstance(key, str):
-            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}.{key}").via(
+            key = key.replace('\\', r'\\\\')
+            key = key.replace('"', r'\"')
+            Data.storage(MCF.storage).modify_set(f'mem.{self._mcf_id}."{key}"').via(
                 Data.storage(MCF.storage), "register"
             )
         elif isinstance(key, Text):
             Data.storage(MCF.storage).modify_set("call.m0").value(f'"{self._mcf_id}"')
-            Data.storage(MCF.storage).modify_set("call.m1").via(
-                Data.storage(MCF.storage), f"mem.{key._mcf_id}"
-            )
+            key.move("call.m1")
+            Function(MCF.builtinSign('hash_map.norm_str')).call()
             Function(MCF.builtinSign('hash_map.set_value')).with_args(
                 Data.storage(MCF.storage), "call"
             )
@@ -1748,178 +1767,13 @@ class HashMap(MCFVariable):
         return ret_val
 
 
-# Entity Implementation
-# Based on selector
+# to_text method of MCFVariable
 
-class Entity(MCFVariable):
-    def __init__(
-        self,
-        init_val: Optional['TextConvertible | Entity'] = "@s",
-        void: bool = False
-    ):
-        MCF.useComponent('entity', built_cps.entity)
-        super().__init__(init_val, void)
+def _to_text(self: MCFVariable) -> Text:
+    result = Text(None)
+    self.move("register")
+    Function(MCF.builtinSign('string.to_text')).call()
+    result.collect("register")
+    return result
 
-    def assign(self, value: 'TextConvertible | Entity'):
-        if isinstance(value, str):
-            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value(f'"{value}"')
-        elif isinstance(value, Text):
-            value.move(f"mem.{self._mcf_id}")
-        elif isinstance(value, Entity):
-            value.move(f"mem.{self._mcf_id}")
-        else:
-            console.error(
-                MCFTypeError(
-                    f"Can not assign variable of type {type(value)} to an Entity."
-                )
-            )
-
-    def move(self, dist: str):
-        Data.storage(MCF.storage).modify_set(dist).via(
-            Data.storage(MCF.storage), f"mem.{self._mcf_id}"
-        )
-
-    def collect(self, src: str):
-        Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
-            Data.storage(MCF.storage), src
-        )
-
-    def extract(self, dist: str):
-        """Extract to NBT as UUID in int-array form."""
-        Data.storage(MCF.storage).modify_set("call.m0").via(
-            Data.storage(MCF.storage), f"mem.{self._mcf_id}"
-        )
-        Data.storage(MCF.storage).modify_set("call.m1").value(
-            MCF.builtinSign("entity.extract")
-        )
-        Function(MCF.builtinSign("entity.call")).with_args(
-            Data.storage(MCF.storage), "call"
-        )
-        Data.storage(MCF.storage).modify_set(dist).via(
-            Data.storage(MCF.storage), "register"
-        )
-
-    def construct(self, src: str):
-        """Construct from int-array form UUID in NBT."""
-        Data.storage(MCF.storage).modify_set("cache.src").via(
-            Data.storage(MCF.storage), src
-        )
-        Function(MCF.builtinSign("entity.construct")).call()
-        Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
-            Data.storage(MCF.storage), "register"
-        )
-
-    @staticmethod
-    def macro_construct(slot: str, mcf_id: str) -> 'Entity':
-        temp = Entity(None, True)
-        temp._mcf_id = mcf_id
-        Data.storage(MCF.storage).modify_set(f"mem.{mcf_id}", True).via(
-            Data.storage(MCF.storage), f"mem.$({slot})"
-        )
-        return temp
-
-    @staticmethod
-    def duplicate(
-        init_val: Optional['TextConvertible | Entity'] = "@s",
-        void: bool = False
-    ) -> 'Entity':
-        return Entity(init_val, void)
-
-    def rm(self):
-        Data.storage(MCF.storage).remove(f"mem.{self._mcf_id}")
-
-
-    # custom methods
-    
-    def exec_function(
-        self,
-        mcfunction: Callable[..., MCFVariable | None],
-        use_location: bool = False
-    ) -> MCFVariable | None:
-        pass
-    
-    # events
-
-    def on_hurt_by_entity(
-        self, 
-    ) -> None:
-        pass
-
-    # static methods
-
-
-
-# Player Implementation
-# Subclass of Entity
-
-class Player(Entity):
-    pass
-
-
-# Block Implementation
-# Based on coordinates
-
-class Block(MCFVariable):
-    def __init__(
-        self,
-        init_val: 'TextConvertible | Block' = "~ ~ ~",
-        void: bool = False
-    ):
-        MCF.useComponent('block', built_cps.block)
-        super().__init__(init_val, void)
-    
-    def assign(self, value: 'TextConvertible | Block'):
-        if isinstance(value, str):
-            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value(r'{}')
-            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}.src").value(
-                f'"{value}"'
-            )
-        elif isinstance(value, Text):
-            Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").value(r'{}')
-            value.move(f"mem.{self._mcf_id}.src")
-        elif isinstance(value, Block):
-            value.move(f"mem.{self._mcf_id}")
-        else:
-            console.error(
-                MCFTypeError(
-                    f"Can not assign variable of type {type(value)} to a Block."
-                )
-            )
-
-    def move(self, dist: str):
-        Data.storage(MCF.storage).modify_set(dist).via(
-            Data.storage(MCF.storage), f"mem.{self._mcf_id}"
-        )
-
-    def collect(self, src: str):
-        Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}").via(
-            Data.storage(MCF.storage), src
-        )
-
-    @staticmethod
-    def duplicate(
-        init_val: 'TextConvertible | Block' = "~ ~ ~",
-        void: bool = False
-    ) -> 'Block':
-        return Block(init_val, void)
-
-    def rm(self):
-        Data.storage(MCF.storage).remove(f"mem.{self._mcf_id}")
-
-    def is_block(self, block_id: str):
-        pass
-
-    def query_state(self) -> None:
-        """Get full data of current block."""
-        Data.storage(MCF.storage).modify_set("call.m0").via(
-            Data.storage(MCF.storage), f"mem.{self._mcf_id}.src"
-        )
-        Data.storage(MCF.storage).modify_set("call.m1").value(
-            '"' + MCF.builtinSign('block.get_state') + '"'
-        )
-        Function(MCF.builtinSign('block.position_call')).with_args(
-            Data.storage(MCF.storage), "call"
-        )
-        Data.storage(MCF.storage).modify_set(f"mem.{self._mcf_id}.data").via(
-            Data.storage(MCF.storage), "cache.result"
-        )
+setattr(MCFVariable, 'to_text', _to_text)
