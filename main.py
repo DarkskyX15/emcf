@@ -1,5 +1,5 @@
 
-from emcf.core import MCF, embed_mcf
+from emcf.core import MCF
 import emcf.v57.debug as debug
 from emcf.types import *
 from emcf.types_extension import *
@@ -15,14 +15,12 @@ MCF.useConfig({
 })
 
 def main():
-    embed_mcf([
-        'say 1'
-    ])
-    h = HashMap({
-        "qwq": Integer(10),
-        "pwp": Integer(114)
+    example_map = HashMap({
+        "key1": Integer(10),
+        "key2": Float(1.114)
     })
-    keys = get_keys(h)
+    debug.log(example_map)
+    keys = get_keys(example_map)
     debug.log(keys)
 
 if __name__ == '__main__':
